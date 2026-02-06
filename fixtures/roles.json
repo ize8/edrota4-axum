@@ -1,0 +1,93 @@
+[
+  {
+    "id": "1",
+    "workplace": 1,
+    "role_name": "Consultant",
+    "marketplace_auto_approve": false,
+    "Workplaces": {
+      "id": "1",
+      "hospital": "Salisbury District Hospital",
+      "ward": "Emergency Department",
+      "address": "Odstock Road,\nSalisbury,\nSP2 8BJ",
+      "code": "SDH-ED"
+    }
+  },
+  {
+    "id": "2",
+    "workplace": 1,
+    "role_name": "Registrar",
+    "marketplace_auto_approve": false,
+    "Workplaces": {
+      "id": "1",
+      "hospital": "Salisbury District Hospital",
+      "ward": "Emergency Department",
+      "address": "Odstock Road,\nSalisbury,\nSP2 8BJ",
+      "code": "SDH-ED"
+    }
+  },
+  {
+    "id": "3",
+    "workplace": 1,
+    "role_name": "SHO",
+    "marketplace_auto_approve": false,
+    "Workplaces": {
+      "id": "1",
+      "hospital": "Salisbury District Hospital",
+      "ward": "Emergency Department",
+      "address": "Odstock Road,\nSalisbury,\nSP2 8BJ",
+      "code": "SDH-ED"
+    }
+  },
+  {
+    "id": "5",
+    "workplace": 1,
+    "role_name": "ANP",
+    "marketplace_auto_approve": false,
+    "Workplaces": {
+      "id": "1",
+      "hospital": "Salisbury District Hospital",
+      "ward": "Emergency Department",
+      "address": "Odstock Road,\nSalisbury,\nSP2 8BJ",
+      "code": "SDH-ED"
+    }
+  },
+  {
+    "id": "6",
+    "workplace": 3,
+    "role_name": "Consultant",
+    "marketplace_auto_approve": false,
+    "Workplaces": {
+      "id": "3",
+      "hospital": "Salisbury District Hospital",
+      "ward": "AMU",
+      "address": null,
+      "code": "SDH-AMU"
+    }
+  },
+  {
+    "id": "7",
+    "workplace": 1,
+    "role_name": "PA",
+    "marketplace_auto_approve": false,
+    "Workplaces": {
+      "id": "1",
+      "hospital": "Salisbury District Hospital",
+      "ward": "Emergency Department",
+      "address": "Odstock Road,\nSalisbury,\nSP2 8BJ",
+      "code": "SDH-ED"
+    }
+  },
+  {
+    "id": "8",
+    "workplace": 1,
+    "role_name": "Paeds ED🧸",
+    "marketplace_auto_approve": false,
+    "Workplaces": {
+      "id": "1",
+      "hospital": "Salisbury District Hospital",
+      "ward": "Emergency Department",
+      "address": "Odstock Road,\nSalisbury,\nSP2 8BJ",
+      "code": "SDH-ED"
+    }
+  }
+]

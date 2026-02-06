@@ -1,0 +1,30 @@
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sqlx::FromRow;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+pub struct AuditEntry {
+    pub uuid: Uuid,
+    pub role_id: i32,
+    pub created_by: i32,
+    pub created_by_name: String,
+    pub old: Option<Value>,
+    pub new: Option<Value>,
+    pub old_staff_name: Option<String>,
+    pub new_staff_name: Option<String>,
+    pub old_time_off_category: Option<String>,
+    pub new_time_off_category: Option<String>,
+    pub date: Option<NaiveDate>,
+    #[serde(serialize_with = "serialize_naive_as_utc")]
+    pub created_at: NaiveDateTime,
+}
+
+fn serialize_naive_as_utc<S>(dt: &NaiveDateTime, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let utc_dt = DateTime::<Utc>::from_naive_utc_and_offset(*dt, Utc);
+    utc_dt.to_rfc3339().serialize(serializer)
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "id": "142",
+    "user_profile_id": 267,
+    "user_role": 3,
+    "dcc_pa": null,
+    "dcc_hour": null,
+    "spa_pa": null,
+    "spa_hour": null,
+    "al_per_year": 0,
+    "sl_per_year": 0,
+    "pl_per_year": 0,
+    "from": "2023-12-01",
+    "until": "2024-04-30",
+    "comment": null
+  },
+  {
+    "id": "124",
+    "user_profile_id": 102,
+    "user_role": 2,
+    "dcc_pa": null,
+    "dcc_hour": null,
+    "spa_pa": null,
+    "spa_hour": null,
+    "al_per_year": 0,
+    "sl_per_year": 0,
+    "pl_per_year": 0,
+    "from": "2023-11-01",
+    "until": "2024-03-31",
+    "comment": null
+  },
+  {
+    "id": "272",
+    "user_profile_id": 416,
+    "user_role": 2,
+    "dcc_pa": null,
+    "dcc_hour": null,
+    "spa_pa": null,
+    "spa_hour": null,
+    "al_per_year": 0,
+    "sl_per_year": 0,
+    "pl_per_year": 0,
+    "from": "2025-09-03",
+    "until": "2026-09-01",
+    "comment": null
+  }
+]

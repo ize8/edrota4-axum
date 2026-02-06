@@ -1,0 +1,35 @@
+use serde::{Deserialize, Serialize};
+
+use utoipa::ToSchema;
+
+/// Input for creating a user role assignment
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateUserRoleInput {
+    pub role_id: i32,
+    pub user_profile_id: i32,
+    pub can_edit_rota: bool,
+    pub can_access_diary: bool,
+    pub can_work_shifts: bool,
+    pub can_edit_templates: bool,
+    pub can_edit_staff: bool,
+    pub can_view_staff_details: bool,
+}
+
+/// Input for updating a user role assignment
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UpdateUserRoleInput {
+    pub role_id: Option<i32>,
+    pub can_edit_rota: Option<bool>,
+    pub can_access_diary: Option<bool>,
+    pub can_work_shifts: Option<bool>,
+    pub can_edit_templates: Option<bool>,
+    pub can_edit_staff: Option<bool>,
+    pub can_view_staff_details: Option<bool>,
+}
+
+/// Response for user role mutations
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UserRoleMutationResponse {
+    pub success: bool,
+    pub message: Option<String>,
+}

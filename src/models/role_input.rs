@@ -1,0 +1,49 @@
+use serde::{Deserialize, Serialize};
+
+use utoipa::ToSchema;
+
+/// Input for creating a role
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateRoleInput {
+    pub workplace_id: i32,
+    pub role_name: String,
+}
+
+/// Input for updating a role
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UpdateRoleInput {
+    pub workplace_id: Option<i32>,
+    pub role_name: Option<String>,
+}
+
+/// Response for role mutations
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RoleMutationResponse {
+    pub success: bool,
+    pub message: Option<String>,
+}
+
+/// Input for creating a workplace
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateWorkplaceInput {
+    pub hospital: Option<String>,
+    pub ward: Option<String>,
+    pub address: Option<String>,
+    pub code: Option<String>,
+}
+
+/// Input for updating a workplace
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UpdateWorkplaceInput {
+    pub hospital: Option<String>,
+    pub ward: Option<String>,
+    pub address: Option<String>,
+    pub code: Option<String>,
+}
+
+/// Response for workplace mutations
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct WorkplaceMutationResponse {
+    pub success: bool,
+    pub message: Option<String>,
+}

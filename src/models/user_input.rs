@@ -39,3 +39,71 @@ pub struct PinResponse {
     pub new_pin: Option<String>, // Only for admin reset
     pub message: Option<String>,
 }
+
+// ============================================================================
+// New Endpoints - Phase B
+// ============================================================================
+
+/// Request for searching users by name or email
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SearchUsersRequest {
+    pub query: String,
+    #[serde(rename = "roleId")]
+    pub role_id: Option<i32>,
+}
+
+/// Request for creating a user profile without Clerk account
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateUserProfileRequest {
+    pub full_name: String,
+    pub short_name: String,
+    pub gmc: Option<i32>,
+    pub primary_email: Option<String>,
+    pub secondary_emails: Option<Vec<String>>,
+    pub tel: Option<Vec<String>>,
+    pub comment: Option<String>,
+    pub auth_pin: Option<String>,
+    pub color: Option<String>,
+}
+
+/// Request for checking email availability
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CheckEmailRequest {
+    pub email: String,
+}
+
+/// Response for email availability check
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CheckEmailResponse {
+    pub used_for_login: bool,
+    pub used_by_profile: bool,
+    pub user_id: Option<i32>,
+}
+
+/// Request for verifying identity via PIN (Step 1 of PIN change)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct VerifyIdentityRequest {
+    pub user_profile_id: i32,
+    pub pin: String,
+}
+
+/// Response for identity verification (contains token)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct VerifyIdentityResponse {
+    pub success: bool,
+    pub token: Option<String>,
+}
+
+/// Request for changing profile PIN with verification token (Step 2)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ChangeProfilePinRequest {
+    pub verification_token: String,
+    pub new_pin: String,
+    pub confirm_pin: String,
+}
+
+/// Generic success response
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SuccessResponse {
+    pub success: bool,
+}

@@ -5,10 +5,13 @@ use axum::{
 use std::sync::Arc;
 
 use crate::{
+    auth::{check_email_in_clerk, generate_pin_token, validate_pin_token},
     extractors::AuthenticatedUser,
     models::{
-        ChangeOwnPinInput, PinResponse, StaffFilterOption, UpdateOwnProfileInput,
-        UpdateUserProfileInput, User,
+        ChangeOwnPinInput, ChangeProfilePinRequest, CheckEmailRequest, CheckEmailResponse,
+        CreateUserProfileRequest, PinResponse, SearchUsersRequest, StaffFilterOption,
+        SuccessResponse, UpdateOwnProfileInput, UpdateUserProfileInput, User,
+        VerifyIdentityRequest, VerifyIdentityResponse,
     },
     AppError, AppResult, AppState,
 };
@@ -431,6 +434,376 @@ pub async fn reset_user_pin(
         new_pin: Some(new_pin),
         message: Some("PIN reset successfully".to_string()),
     }))
+}
+
+// ============================================================================
+// New Endpoints - Phase B
+// ============================================================================
+
+/// POST /api/users/search - Search users by name or email
+#[utoipa::path(
+    post,
+    path = "/api/users/search",
+    request_body = SearchUsersRequest,
+    responses(
+        (status = 200, description = "List of matching users", body = Vec<User>),
+        (status = 400, description = "Invalid search query")
+    ),
+    tag = "users",
+    security(("cookie_auth" = []))
+)]
+pub async fn search_users(
+    State(state): State<Arc<AppState>>,
+    _auth: AuthenticatedUser, // Require authentication
+    Json(req): Json<SearchUsersRequest>,
+) -> AppResult<Json<Vec<User>>> {
+    // Validate query is not empty
+    if req.query.trim().is_empty() {
+        return Err(AppError::BadRequest("Search query cannot be empty".to_string()));
+    }
+
+    let search_pattern = format!("%{}%", req.query);
+
+    let users = if let Some(role_id) = req.role_id {
+        // Search with role filter
+        sqlx::query_as::<_, User>(
+            r#"
+            SELECT DISTINCT u.* FROM "Users" u
+            INNER JOIN "UserRoles" ur ON u.user_profile_id = ur.user_profile_id
+            WHERE ur.role_id = $2
+              AND (u.full_name ILIKE $1
+                   OR u.short_name ILIKE $1
+                   OR u.primary_email ILIKE $1
+                   OR EXISTS (SELECT 1 FROM unnest(u.secondary_emails) e WHERE e ILIKE $1))
+            ORDER BY u.full_name
+            LIMIT 50
+            "#,
+        )
+        .bind(&search_pattern)
+        .bind(role_id)
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        // Search without role filter
+        sqlx::query_as::<_, User>(
+            r#"
+            SELECT * FROM "Users"
+            WHERE full_name ILIKE $1
+               OR short_name ILIKE $1
+               OR primary_email ILIKE $1
+               OR EXISTS (SELECT 1 FROM unnest(secondary_emails) e WHERE e ILIKE $1)
+            ORDER BY full_name
+            LIMIT 50
+            "#,
+        )
+        .bind(&search_pattern)
+        .fetch_all(&state.db)
+        .await?
+    };
+
+    tracing::info!(
+        query = %req.query,
+        role_id = ?req.role_id,
+        results_count = users.len(),
+        "User search completed"
+    );
+
+    Ok(Json(users))
+}
+
+/// POST /api/users/profiles - Create user profile without Clerk account
+#[utoipa::path(
+    post,
+    path = "/api/users/profiles",
+    request_body = CreateUserProfileRequest,
+    responses(
+        (status = 200, description = "User profile created successfully", body = User),
+        (status = 400, description = "Invalid input data"),
+        (status = 403, description = "Missing can_edit_staff permission")
+    ),
+    tag = "users",
+    security(("cookie_auth" = []))
+)]
+pub async fn create_user_profile(
+    State(state): State<Arc<AppState>>,
+    auth: AuthenticatedUser,
+    Json(req): Json<CreateUserProfileRequest>,
+) -> AppResult<Json<User>> {
+    // Check permission
+    if !crate::extractors::permissions::has_permission_by_name(
+        &state.db,
+        auth.profile_id,
+        auth.is_super_admin,
+        "can_edit_staff",
+    )
+    .await?
+    {
+        return Err(AppError::Forbidden(
+            "Missing can_edit_staff permission".to_string(),
+        ));
+    }
+
+    // Validate PIN format if provided
+    if let Some(ref pin) = req.auth_pin {
+        if pin.len() != 5 || !pin.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AppError::BadRequest(
+                "PIN must be exactly 5 digits".to_string(),
+            ));
+        }
+    }
+
+    // Validate color format if provided
+    if let Some(ref color) = req.color {
+        if !color.starts_with('#') || color.len() != 7 {
+            return Err(AppError::BadRequest(
+                "Color must be a valid hex color (#RRGGBB)".to_string(),
+            ));
+        }
+    }
+
+    // Generate temporary auth_id using UUID
+    let temp_auth_id = format!("temp_{}", uuid::Uuid::new_v4());
+
+    // Insert user profile
+    let user = sqlx::query_as::<_, User>(
+        r#"
+        INSERT INTO "Users" (
+            auth_id, full_name, short_name, gmc, primary_email,
+            secondary_emails, tel, comment, auth_pin, color, is_generic_login
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)
+        RETURNING *
+        "#,
+    )
+    .bind(&temp_auth_id)
+    .bind(&req.full_name)
+    .bind(&req.short_name)
+    .bind(req.gmc)
+    .bind(&req.primary_email)
+    .bind(&req.secondary_emails)
+    .bind(&req.tel)
+    .bind(&req.comment)
+    .bind(&req.auth_pin)
+    .bind(&req.color)
+    .fetch_one(&state.db)
+    .await?;
+
+    tracing::info!(
+        user_profile_id = user.user_profile_id,
+        full_name = %req.full_name,
+        created_by = auth.profile_id,
+        "User profile created without Clerk account"
+    );
+
+    Ok(Json(user))
+}
+
+/// POST /api/users/check-email - Check if email exists in Clerk or database
+#[utoipa::path(
+    post,
+    path = "/api/users/check-email",
+    request_body = CheckEmailRequest,
+    responses(
+        (status = 200, description = "Email availability check result", body = CheckEmailResponse),
+        (status = 403, description = "Missing can_edit_staff permission")
+    ),
+    tag = "users",
+    security(("cookie_auth" = []))
+)]
+pub async fn check_email_usage(
+    State(state): State<Arc<AppState>>,
+    auth: AuthenticatedUser,
+    Json(req): Json<CheckEmailRequest>,
+) -> AppResult<Json<CheckEmailResponse>> {
+    // Check permission
+    if !crate::extractors::permissions::has_permission_by_name(
+        &state.db,
+        auth.profile_id,
+        auth.is_super_admin,
+        "can_edit_staff",
+    )
+    .await?
+    {
+        return Err(AppError::Forbidden(
+            "Missing can_edit_staff permission".to_string(),
+        ));
+    }
+
+    // Check database for email
+    let db_result = sqlx::query_scalar::<_, Option<i32>>(
+        r#"
+        SELECT user_profile_id
+        FROM "Users"
+        WHERE LOWER(primary_email) = LOWER($1)
+           OR $1 = ANY(secondary_emails)
+        LIMIT 1
+        "#,
+    )
+    .bind(&req.email)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let used_by_profile = db_result.is_some();
+    let user_id = db_result.flatten();
+
+    // Check Clerk for email
+    let used_for_login = check_email_in_clerk(&req.email, &state.config.clerk_secret_key).await?;
+
+    tracing::info!(
+        email = %req.email,
+        used_for_login,
+        used_by_profile,
+        "Email availability check completed"
+    );
+
+    Ok(Json(CheckEmailResponse {
+        used_for_login,
+        used_by_profile,
+        user_id,
+    }))
+}
+
+/// POST /api/users/verify-identity - Verify PIN and issue token (Step 1 of PIN change)
+#[utoipa::path(
+    post,
+    path = "/api/users/verify-identity",
+    request_body = VerifyIdentityRequest,
+    responses(
+        (status = 200, description = "Identity verified, token issued", body = VerifyIdentityResponse),
+        (status = 400, description = "Invalid PIN format or no PIN set"),
+        (status = 401, description = "Incorrect PIN"),
+        (status = 403, description = "Only generic accounts can use this endpoint"),
+        (status = 404, description = "User not found")
+    ),
+    tag = "users",
+    security(("cookie_auth" = []))
+)]
+pub async fn verify_profile_identity(
+    State(state): State<Arc<AppState>>,
+    auth: AuthenticatedUser,
+    Json(req): Json<VerifyIdentityRequest>,
+) -> AppResult<Json<VerifyIdentityResponse>> {
+    // Verify this is a generic account
+    let current_user = sqlx::query_as::<_, User>(
+        r#"SELECT * FROM "Users" WHERE user_profile_id = $1"#,
+    )
+    .bind(auth.profile_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    if !current_user.is_generic_login {
+        return Err(AppError::Forbidden(
+            "This function is only for generic account users".to_string(),
+        ));
+    }
+
+    // Validate PIN format
+    if req.pin.len() != 5 || !req.pin.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest("PIN must be 5 digits".to_string()));
+    }
+
+    // Fetch target user and their PIN
+    let target_user = sqlx::query_as::<_, User>(
+        r#"SELECT * FROM "Users" WHERE user_profile_id = $1"#,
+    )
+    .bind(req.user_profile_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("User profile not found".to_string()))?;
+
+    // Check if user has a PIN set
+    let stored_pin = target_user
+        .auth_pin
+        .ok_or_else(|| AppError::BadRequest("No PIN set for this user. Contact administrator.".to_string()))?;
+
+    // Verify PIN matches (plain text comparison)
+    if req.pin != stored_pin {
+        tracing::warn!(
+            user_profile_id = req.user_profile_id,
+            attempted_by = auth.profile_id,
+            "Incorrect PIN attempt"
+        );
+        return Err(AppError::Unauthorized(
+            "Incorrect PIN for selected user".to_string(),
+        ));
+    }
+
+    // Generate verification token (valid for 5 minutes)
+    let token = generate_pin_token(req.user_profile_id, &state.config.pin_token_secret)?;
+
+    tracing::info!(
+        user_profile_id = req.user_profile_id,
+        verified_by = auth.profile_id,
+        "Identity verified, token issued"
+    );
+
+    Ok(Json(VerifyIdentityResponse {
+        success: true,
+        token: Some(token),
+    }))
+}
+
+/// POST /api/users/change-profile-pin - Change PIN using verification token (Step 2)
+#[utoipa::path(
+    post,
+    path = "/api/users/change-profile-pin",
+    request_body = ChangeProfilePinRequest,
+    responses(
+        (status = 200, description = "PIN changed successfully", body = SuccessResponse),
+        (status = 400, description = "Invalid input or token expired"),
+        (status = 401, description = "Invalid verification token")
+    ),
+    tag = "users"
+)]
+pub async fn change_profile_pin(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ChangeProfilePinRequest>,
+) -> AppResult<Json<SuccessResponse>> {
+    // Validate new PIN matches confirmation
+    if req.new_pin != req.confirm_pin {
+        return Err(AppError::BadRequest("New PINs do not match".to_string()));
+    }
+
+    // Validate PIN format
+    if req.new_pin.len() != 5 || !req.new_pin.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "PIN must be exactly 5 digits".to_string(),
+        ));
+    }
+
+    // Validate and decode token
+    let user_profile_id = validate_pin_token(&req.verification_token, &state.config.pin_token_secret)?;
+
+    // Get current PIN
+    let current_pin: Option<String> = sqlx::query_scalar(
+        r#"SELECT auth_pin FROM "Users" WHERE user_profile_id = $1"#,
+    )
+    .bind(user_profile_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    // Verify new PIN is different from current PIN
+    if let Some(ref current) = current_pin {
+        if &req.new_pin == current {
+            return Err(AppError::BadRequest(
+                "New PIN must be different from current PIN".to_string(),
+            ));
+        }
+    }
+
+    // Update PIN
+    sqlx::query(r#"UPDATE "Users" SET auth_pin = $1 WHERE user_profile_id = $2"#)
+        .bind(&req.new_pin)
+        .bind(user_profile_id)
+        .execute(&state.db)
+        .await?;
+
+    tracing::info!(
+        user_profile_id,
+        "Profile PIN changed successfully via token"
+    );
+
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 // Note: has_permission is now centralized in crate::extractors::permissions::has_permission_by_name

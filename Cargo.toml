@@ -24,5 +24,8 @@ thiserror = "2"
 base64 = "0.22"
 async-trait = "0.1"
 rand = "0.8"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-scalar = { version = "0.2", features = ["axum"] }

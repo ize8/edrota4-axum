@@ -57,6 +57,13 @@ pub fn build_router(state: Arc<crate::AppState>) -> Router {
         .route("/me/pin", post(handlers::users_handler::change_own_pin))
         .route("/substantive", get(handlers::users_handler::get_substantive_users))
         .route("/staff-list", get(handlers::users_handler::get_staff_list))
+        // New Phase B endpoints - must come before /{id} to prevent route shadowing
+        .route("/search", post(handlers::users_handler::search_users))
+        .route("/profiles", post(handlers::users_handler::create_user_profile))
+        .route("/check-email", post(handlers::users_handler::check_email_usage))
+        .route("/verify-identity", post(handlers::users_handler::verify_profile_identity))
+        .route("/change-profile-pin", post(handlers::users_handler::change_profile_pin))
+        // Existing routes
         .route("/profiles/{id}", put(handlers::users_handler::update_user_profile))
         .route("/{id}/reset-pin", post(handlers::users_handler::reset_user_pin))
         .route("/{id}", get(handlers::users_handler::get_user));

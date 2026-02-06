@@ -31,5 +31,9 @@ pub use shift_input::{CreateShiftInput, ShiftMutationResponse, UpdateShiftInput}
 pub use template_input::{CreateTemplateInput, TemplateMutationResponse, UpdateTemplateInput};
 pub use time_off::TimeOffCategory;
 pub use user::{StaffFilterOption, User, UserRole};
-pub use user_input::{ChangeOwnPinInput, PinResponse, UpdateOwnProfileInput, UpdateUserProfileInput};
+pub use user_input::{
+    ChangeOwnPinInput, ChangeProfilePinRequest, CheckEmailRequest, CheckEmailResponse,
+    CreateUserProfileRequest, PinResponse, SearchUsersRequest, SuccessResponse,
+    UpdateOwnProfileInput, UpdateUserProfileInput, VerifyIdentityRequest, VerifyIdentityResponse,
+};
 pub use user_role_input::{CreateUserRoleInput, UpdateUserRoleInput, UserRoleMutationResponse};

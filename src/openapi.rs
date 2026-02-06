@@ -33,6 +33,12 @@ use utoipa::Modify;
         crate::handlers::users_handler::change_own_pin,
         crate::handlers::users_handler::update_user_profile,
         crate::handlers::users_handler::reset_user_pin,
+        // New Phase B endpoints
+        crate::handlers::users_handler::search_users,
+        crate::handlers::users_handler::create_user_profile,
+        crate::handlers::users_handler::check_email_usage,
+        crate::handlers::users_handler::verify_profile_identity,
+        crate::handlers::users_handler::change_profile_pin,
 
         // References
         crate::handlers::references_handler::get_time_off_categories,
@@ -134,6 +140,15 @@ use utoipa::Modify;
             crate::models::ChangeOwnPinInput,
             crate::models::UpdateUserProfileInput,
             crate::models::PinResponse,
+            // New Phase B user models
+            crate::models::SearchUsersRequest,
+            crate::models::CreateUserProfileRequest,
+            crate::models::CheckEmailRequest,
+            crate::models::CheckEmailResponse,
+            crate::models::VerifyIdentityRequest,
+            crate::models::VerifyIdentityResponse,
+            crate::models::ChangeProfilePinRequest,
+            crate::models::SuccessResponse,
             crate::models::CreateUserRoleInput,
             crate::models::UpdateUserRoleInput,
             crate::models::UserRoleMutationResponse,

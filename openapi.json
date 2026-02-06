@@ -1,0 +1,5077 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "EDrota API",
+        "description": "Backend API for EDrota shift management system",
+        "contact": {
+            "name": "API Support",
+            "email": "support@edrota.com"
+        },
+        "license": {
+            "name": ""
+        },
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8080",
+            "description": "Local development server"
+        }
+    ],
+    "paths": {
+        "/api/audit": {
+            "get": {
+                "tags": [
+                    "audit"
+                ],
+                "summary": "GET /api/audit?roleId=&year=&month=",
+                "operationId": "get_audit",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of audit entries for shift changes",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/AuditEntry"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing required permissions (can_edit_staff, can_edit_templates, or can_edit_rota)"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/auth/me": {
+            "get": {
+                "tags": [
+                    "auth"
+                ],
+                "summary": "GET /api/auth/me",
+                "operationId": "get_me",
+                "responses": {
+                    "200": {
+                        "description": "Current authenticated user",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/User"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/auth/verify-pin": {
+            "post": {
+                "tags": [
+                    "auth"
+                ],
+                "summary": "POST /api/auth/verify-pin",
+                "operationId": "verify_pin",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VerifyPinRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "PIN verification result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VerifyPinResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                }
+            }
+        },
+        "/api/comments": {
+            "get": {
+                "tags": [
+                    "comments"
+                ],
+                "summary": "GET /api/comments?year=&month=&roleId=",
+                "operationId": "get_comments",
+                "parameters": [
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of comments (Consultant on Duty) for specified filters",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/COD"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/diary": {
+            "get": {
+                "tags": [
+                    "diary"
+                ],
+                "summary": "GET /api/diary?roleId=&start=&end=",
+                "operationId": "get_diary",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "start",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "end",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of diary entries",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/DiaryEntry"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid date format"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "diary"
+                ],
+                "summary": "POST /api/diary - Create a new diary entry",
+                "operationId": "create_diary_entry",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateDiaryInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Diary entry created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DiaryEntry"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_access_diary permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/diary/{id}": {
+            "delete": {
+                "tags": [
+                    "diary"
+                ],
+                "summary": "DELETE /api/diary/{id} - Delete a diary entry (soft delete)",
+                "operationId": "delete_diary_entry",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Diary entry ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Diary entry deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DiaryMutationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_access_diary permission"
+                    },
+                    "404": {
+                        "description": "Diary entry not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/job-plans": {
+            "get": {
+                "tags": [
+                    "job-plans"
+                ],
+                "summary": "GET /api/job-plans?user_profile_id=&role_id=",
+                "operationId": "get_job_plans",
+                "parameters": [
+                    {
+                        "name": "user_profile_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "role_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of job plans",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/JobPlan"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "job-plans"
+                ],
+                "summary": "POST /api/job-plans - Create a new job plan",
+                "operationId": "create_job_plan",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateJobPlanInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Job plan created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/JobPlan"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/job-plans/{id}": {
+            "put": {
+                "tags": [
+                    "job-plans"
+                ],
+                "summary": "PUT /api/job-plans/{id} - Update a job plan",
+                "operationId": "update_job_plan",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Job plan ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateJobPlanInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Job plan updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/JobPlan"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No fields to update"
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "Job plan not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "job-plans"
+                ],
+                "summary": "DELETE /api/job-plans/{id} - Delete a job plan",
+                "operationId": "delete_job_plan",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Job plan ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Job plan deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/JobPlanMutationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "Job plan not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/job-plans/{id}/terminate": {
+            "post": {
+                "tags": [
+                    "job-plans"
+                ],
+                "summary": "POST /api/job-plans/{id}/terminate - Terminate a job plan by setting 'until' to today",
+                "operationId": "terminate_job_plan",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Job plan ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Job plan terminated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/JobPlan"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "Job plan not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/marketplace/approvals": {
+            "get": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "GET /api/marketplace/approvals?roleId=",
+                "operationId": "get_approval_requests",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "userId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of shift requests pending admin approval",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ShiftRequestWithDetails"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_rota permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/marketplace/dashboard": {
+            "get": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "GET /api/marketplace/dashboard?userId=",
+                "operationId": "get_dashboard",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "userId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Dashboard counts for open, my, and incoming requests"
+                    },
+                    "400": {
+                        "description": "userId required"
+                    }
+                }
+            }
+        },
+        "/api/marketplace/incoming": {
+            "get": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "GET /api/marketplace/incoming?userId=",
+                "operationId": "get_incoming_requests",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "userId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of shift requests incoming to the user (proposed or peer accepted)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ShiftRequestWithDetails"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "userId required"
+                    }
+                }
+            }
+        },
+        "/api/marketplace/my": {
+            "get": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "GET /api/marketplace/my?userId=",
+                "operationId": "get_my_requests",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "userId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of shift requests created by the user",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ShiftRequestWithDetails"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "userId required"
+                    }
+                }
+            }
+        },
+        "/api/marketplace/open": {
+            "get": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "GET /api/marketplace/open?roleId=",
+                "operationId": "get_open_requests",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "userId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of open shift requests available for acceptance",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ShiftRequestWithDetails"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/marketplace/requests": {
+            "post": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "POST /api/marketplace/requests - Create a new shift swap request",
+                "operationId": "create_shift_request",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateShiftRequestInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Shift request created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShiftRequestWithDetails"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request_type or missing target_user_id for SWAP"
+                    },
+                    "403": {
+                        "description": "You can only create requests for your own shifts"
+                    },
+                    "404": {
+                        "description": "Shift not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/marketplace/requests/{id}": {
+            "delete": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "DELETE /api/marketplace/requests/{id} - Cancel a request",
+                "operationId": "cancel_shift_request",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Shift request ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request cancelled successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MarketplaceMutationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Cannot cancel request with current status"
+                    },
+                    "403": {
+                        "description": "You can only cancel your own requests"
+                    },
+                    "404": {
+                        "description": "Request not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/marketplace/requests/{id}/accept": {
+            "post": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "POST /api/marketplace/requests/{id}/accept - Accept an OPEN request",
+                "operationId": "accept_shift_request",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Shift request ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AcceptRequestInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Request accepted, may be auto-approved or pending approval",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShiftRequestWithDetails"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Request is not OPEN or cannot accept your own request"
+                    },
+                    "404": {
+                        "description": "Request not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/marketplace/requests/{id}/admin-decision": {
+            "post": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "POST /api/marketplace/requests/{id}/admin-decision - Admin approves or rejects",
+                "operationId": "admin_decision",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Shift request ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AdminDecisionInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Admin decision processed, shift swap performed if approved",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShiftRequestWithDetails"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Request is not PENDING_APPROVAL or has no candidate"
+                    },
+                    "403": {
+                        "description": "Missing can_edit_rota permission"
+                    },
+                    "404": {
+                        "description": "Request not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/marketplace/requests/{id}/respond": {
+            "post": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "POST /api/marketplace/requests/{id}/respond - Target user responds to PROPOSED swap",
+                "operationId": "respond_to_proposal",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Shift request ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RespondToProposalInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Response processed, may be auto-approved, rejected, or pending approval",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShiftRequestWithDetails"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Request is not PROPOSED"
+                    },
+                    "403": {
+                        "description": "You are not the target of this proposal"
+                    },
+                    "404": {
+                        "description": "Request not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/marketplace/swappable": {
+            "get": {
+                "tags": [
+                    "marketplace"
+                ],
+                "summary": "GET /api/marketplace/swappable?roleId=&month=&year=",
+                "operationId": "get_swappable_shifts",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "userId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of shifts available for swapping (assigned and published)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Shift"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "roleId, month, and year required"
+                    }
+                }
+            }
+        },
+        "/api/references/time-off-categories": {
+            "get": {
+                "tags": [
+                    "references"
+                ],
+                "summary": "GET /api/references/time-off-categories",
+                "operationId": "get_time_off_categories",
+                "responses": {
+                    "200": {
+                        "description": "List of time-off categories",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TimeOffCategory"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/roles": {
+            "get": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "GET /api/roles",
+                "operationId": "get_roles",
+                "responses": {
+                    "200": {
+                        "description": "List of roles with joined workplace data",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Role"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "POST /api/roles - Create a new role",
+                "operationId": "create_role",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateRoleInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Role created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Role"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/roles/{id}": {
+            "put": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "PUT /api/roles/{id} - Update a role",
+                "operationId": "update_role",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Role ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateRoleInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Role updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Role"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No fields to update"
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "Role not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "DELETE /api/roles/{id} - Delete a role",
+                "operationId": "delete_role",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Role ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Role deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RoleMutationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "Role not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/shifts": {
+            "get": {
+                "tags": [
+                    "shifts"
+                ],
+                "summary": "GET /api/shifts?year=&month=&roleId=",
+                "operationId": "get_shifts_for_month",
+                "parameters": [
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of shifts for specified month/year and optional role filter",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Shift"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "shifts"
+                ],
+                "summary": "POST /api/shifts - Create a new shift with audit trail",
+                "operationId": "create_shift",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateShiftInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Shift created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Shift"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_rota permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/shifts/by-date": {
+            "get": {
+                "tags": [
+                    "shifts"
+                ],
+                "summary": "GET /api/shifts/by-date?date=&roleId=",
+                "operationId": "get_shifts_for_date",
+                "parameters": [
+                    {
+                        "name": "date",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of shifts for a specific date",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Shift"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid date format"
+                    }
+                }
+            }
+        },
+        "/api/shifts/range": {
+            "get": {
+                "tags": [
+                    "shifts"
+                ],
+                "summary": "GET /api/shifts/range?start=&end=&roleId=",
+                "operationId": "get_shifts_for_range",
+                "parameters": [
+                    {
+                        "name": "start",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "end",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of shifts within date range",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Shift"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid date format"
+                    }
+                }
+            }
+        },
+        "/api/shifts/{uuid}": {
+            "put": {
+                "tags": [
+                    "shifts"
+                ],
+                "summary": "PUT /api/shifts/{uuid} - Update a shift (audit trail via DB triggers)",
+                "operationId": "update_shift",
+                "parameters": [
+                    {
+                        "name": "uuid",
+                        "in": "path",
+                        "description": "Shift UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateShiftInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Shift updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Shift"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No fields to update"
+                    },
+                    "403": {
+                        "description": "Missing can_edit_rota permission"
+                    },
+                    "404": {
+                        "description": "Shift not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "shifts"
+                ],
+                "summary": "DELETE /api/shifts/{uuid} - Delete a shift (audit trail via DB triggers)",
+                "operationId": "delete_shift",
+                "parameters": [
+                    {
+                        "name": "uuid",
+                        "in": "path",
+                        "description": "Shift UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Shift deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShiftMutationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_rota permission"
+                    },
+                    "404": {
+                        "description": "Shift not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/templates": {
+            "get": {
+                "tags": [
+                    "templates"
+                ],
+                "summary": "GET /api/templates?roleId=",
+                "operationId": "get_templates",
+                "parameters": [
+                    {
+                        "name": "roleId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of shift templates",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ShiftTemplate"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "templates"
+                ],
+                "summary": "POST /api/templates - Create a new template",
+                "operationId": "create_template",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateTemplateInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Template created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShiftTemplate"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_templates permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/templates/{id}": {
+            "put": {
+                "tags": [
+                    "templates"
+                ],
+                "summary": "PUT /api/templates/{id} - Update a template",
+                "operationId": "update_template",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Template ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateTemplateInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Template updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShiftTemplate"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No fields to update"
+                    },
+                    "403": {
+                        "description": "Missing can_edit_templates permission"
+                    },
+                    "404": {
+                        "description": "Template not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "templates"
+                ],
+                "summary": "DELETE /api/templates/{id} - Delete a template",
+                "operationId": "delete_template",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Template ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TemplateMutationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_templates permission"
+                    },
+                    "404": {
+                        "description": "Template not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/user-roles": {
+            "get": {
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "GET /api/user-roles?user_profile_id=",
+                "operationId": "get_user_roles",
+                "parameters": [
+                    {
+                        "name": "user_profile_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of user role assignments with joined role and workplace data",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/UserRole"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "POST /api/user-roles - Create a new user role assignment",
+                "operationId": "create_user_role",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateUserRoleInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "User role created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserRole"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/user-roles/{id}": {
+            "put": {
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "PUT /api/user-roles/{id} - Update a user role assignment",
+                "operationId": "update_user_role",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "User role ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateUserRoleInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "User role updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserRole"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No fields to update"
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "User role not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "DELETE /api/user-roles/{id} - Delete a user role assignment",
+                "operationId": "delete_user_role",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "User role ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User role deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserRoleMutationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "User role not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/users": {
+            "get": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "GET /api/users",
+                "operationId": "get_users",
+                "responses": {
+                    "200": {
+                        "description": "List of all users",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/User"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/users/change-profile-pin": {
+            "post": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "POST /api/users/change-profile-pin - Change PIN using verification token (Step 2)",
+                "operationId": "change_profile_pin",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChangeProfilePinRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "PIN changed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SuccessResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input or token expired"
+                    },
+                    "401": {
+                        "description": "Invalid verification token"
+                    }
+                }
+            }
+        },
+        "/api/users/check-email": {
+            "post": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "POST /api/users/check-email - Check if email exists in Clerk or database",
+                "operationId": "check_email_usage",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CheckEmailRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Email availability check result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CheckEmailResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/users/me": {
+            "put": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "PUT /api/users/me - Update own profile (self-service)",
+                "operationId": "update_own_profile",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateOwnProfileInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Profile updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/User"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Generic accounts cannot self-update"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/users/me/pin": {
+            "post": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "POST /api/users/me/pin - Change own PIN (self-service)",
+                "operationId": "change_own_pin",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChangeOwnPinInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "PIN changed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PinResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid PIN format or PINs don't match"
+                    },
+                    "401": {
+                        "description": "Current PIN incorrect"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/users/profiles": {
+            "post": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "POST /api/users/profiles - Create user profile without Clerk account",
+                "operationId": "create_user_profile",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateUserProfileRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "User profile created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/User"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input data"
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/users/profiles/{id}": {
+            "put": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "PUT /api/users/profiles/{id} - Update user profile (admin)",
+                "operationId": "update_user_profile",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "User profile ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateUserProfileInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "User profile updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/User"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/users/search": {
+            "post": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "POST /api/users/search - Search users by name or email",
+                "operationId": "search_users",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SearchUsersRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "List of matching users",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/User"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid search query"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/users/staff-list": {
+            "get": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "GET /api/users/staff-list",
+                "operationId": "get_staff_list",
+                "responses": {
+                    "200": {
+                        "description": "Staff list for filters",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/StaffFilterOption"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/users/substantive": {
+            "get": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "GET /api/users/substantive",
+                "operationId": "get_substantive_users",
+                "responses": {
+                    "200": {
+                        "description": "List of substantive (non-generic) users",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/User"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/users/verify-identity": {
+            "post": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "POST /api/users/verify-identity - Verify PIN and issue token (Step 1 of PIN change)",
+                "operationId": "verify_profile_identity",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VerifyIdentityRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Identity verified, token issued",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VerifyIdentityResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid PIN format or no PIN set"
+                    },
+                    "401": {
+                        "description": "Incorrect PIN"
+                    },
+                    "403": {
+                        "description": "Only generic accounts can use this endpoint"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/users/{id}": {
+            "get": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "GET /api/users/{id}",
+                "operationId": "get_user",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "User profile ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/User"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            }
+        },
+        "/api/users/{id}/reset-pin": {
+            "post": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "POST /api/users/{id}/reset-pin - Reset user PIN (admin)",
+                "operationId": "reset_user_pin",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "User profile ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "PIN reset successfully, new PIN returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PinResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/workplaces": {
+            "get": {
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "GET /api/workplaces",
+                "operationId": "get_workplaces",
+                "responses": {
+                    "200": {
+                        "description": "List of workplaces",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Workplace"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "POST /api/workplaces - Create a new workplace",
+                "operationId": "create_workplace",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateWorkplaceInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Workplace created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Workplace"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/api/workplaces/{id}": {
+            "put": {
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "PUT /api/workplaces/{id} - Update a workplace",
+                "operationId": "update_workplace",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Workplace ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateWorkplaceInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Workplace updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Workplace"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No fields to update"
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "Workplace not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "DELETE /api/workplaces/{id} - Delete a workplace",
+                "operationId": "delete_workplace",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Workplace ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workplace deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkplaceMutationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Missing can_edit_staff permission"
+                    },
+                    "404": {
+                        "description": "Workplace not found"
+                    }
+                },
+                "security": [
+                    {
+                        "cookie_auth": []
+                    }
+                ]
+            }
+        },
+        "/health": {
+            "get": {
+                "tags": [
+                    "health"
+                ],
+                "operationId": "health_check",
+                "responses": {
+                    "200": {
+                        "description": "Health check OK"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "AcceptRequestInput": {
+                "type": "object",
+                "description": "Input for accepting/claiming an open request",
+                "properties": {
+                    "target_shift_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uuid"
+                    }
+                }
+            },
+            "AdminDecisionInput": {
+                "type": "object",
+                "description": "Input for admin approval decision",
+                "required": [
+                    "approve"
+                ],
+                "properties": {
+                    "approve": {
+                        "type": "boolean"
+                    },
+                    "notes": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "AuditEntry": {
+                "type": "object",
+                "required": [
+                    "uuid",
+                    "role_id",
+                    "created_by",
+                    "created_by_name",
+                    "created_at"
+                ],
+                "properties": {
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "created_by": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "created_by_name": {
+                        "type": "string"
+                    },
+                    "date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date"
+                    },
+                    "new": {},
+                    "new_staff_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "new_time_off_category": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "old": {},
+                    "old_staff_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "old_time_off_category": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "role_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "uuid": {
+                        "type": "string",
+                        "format": "uuid"
+                    }
+                }
+            },
+            "COD": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "role_id",
+                    "date",
+                    "created_by"
+                ],
+                "properties": {
+                    "comment": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "created_by": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "date": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "role_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "ChangeOwnPinInput": {
+                "type": "object",
+                "description": "Input for changing own PIN (self-service)",
+                "required": [
+                    "current_pin",
+                    "new_pin",
+                    "confirm_new_pin"
+                ],
+                "properties": {
+                    "confirm_new_pin": {
+                        "type": "string"
+                    },
+                    "current_pin": {
+                        "type": "string"
+                    },
+                    "new_pin": {
+                        "type": "string"
+                    }
+                }
+            },
+            "ChangeProfilePinRequest": {
+                "type": "object",
+                "description": "Request for changing profile PIN with verification token (Step 2)",
+                "required": [
+                    "verification_token",
+                    "new_pin",
+                    "confirm_pin"
+                ],
+                "properties": {
+                    "confirm_pin": {
+                        "type": "string"
+                    },
+                    "new_pin": {
+                        "type": "string"
+                    },
+                    "verification_token": {
+                        "type": "string"
+                    }
+                }
+            },
+            "CheckEmailRequest": {
+                "type": "object",
+                "description": "Request for checking email availability",
+                "required": [
+                    "email"
+                ],
+                "properties": {
+                    "email": {
+                        "type": "string"
+                    }
+                }
+            },
+            "CheckEmailResponse": {
+                "type": "object",
+                "description": "Response for email availability check",
+                "required": [
+                    "used_for_login",
+                    "used_by_profile"
+                ],
+                "properties": {
+                    "used_by_profile": {
+                        "type": "boolean"
+                    },
+                    "used_for_login": {
+                        "type": "boolean"
+                    },
+                    "user_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    }
+                }
+            },
+            "CreateDiaryInput": {
+                "type": "object",
+                "description": "Input for creating a diary entry",
+                "required": [
+                    "role_id",
+                    "date",
+                    "al",
+                    "sl",
+                    "pl"
+                ],
+                "properties": {
+                    "al": {
+                        "type": "boolean"
+                    },
+                    "created_by": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "date": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "entry": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "pl": {
+                        "type": "boolean"
+                    },
+                    "role_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "sl": {
+                        "type": "boolean"
+                    },
+                    "user_profile_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    }
+                }
+            },
+            "CreateJobPlanInput": {
+                "type": "object",
+                "description": "Input for creating a job plan",
+                "required": [
+                    "user_role",
+                    "user_profile_id",
+                    "al_per_year",
+                    "sl_per_year",
+                    "pl_per_year",
+                    "from"
+                ],
+                "properties": {
+                    "al_per_year": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "comment": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "dcc_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "dcc_pa": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "from": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "pl_per_year": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "sl_per_year": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "spa_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "spa_pa": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "until": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date"
+                    },
+                    "user_profile_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "user_role": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "CreateRoleInput": {
+                "type": "object",
+                "description": "Input for creating a role",
+                "required": [
+                    "workplace_id",
+                    "role_name"
+                ],
+                "properties": {
+                    "role_name": {
+                        "type": "string"
+                    },
+                    "workplace_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "CreateShiftInput": {
+                "type": "object",
+                "description": "Input DTO for creating a new shift",
+                "required": [
+                    "role",
+                    "label",
+                    "pa_value",
+                    "font_color",
+                    "bk_color",
+                    "is_locum",
+                    "published",
+                    "date",
+                    "is_dcc",
+                    "is_spa"
+                ],
+                "properties": {
+                    "bk_color": {
+                        "type": "string"
+                    },
+                    "created_by": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "date": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "end": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "font_color": {
+                        "type": "string"
+                    },
+                    "is_dcc": {
+                        "type": "boolean"
+                    },
+                    "is_locum": {
+                        "type": "boolean"
+                    },
+                    "is_spa": {
+                        "type": "boolean"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "money_per_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "pa_value": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "published": {
+                        "type": "boolean"
+                    },
+                    "role": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "start": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "time_off": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "user_profile_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    }
+                }
+            },
+            "CreateShiftRequestInput": {
+                "type": "object",
+                "description": "Input for creating a shift swap request",
+                "required": [
+                    "shift_id",
+                    "type"
+                ],
+                "properties": {
+                    "notes": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "shift_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "target_shift_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uuid"
+                    },
+                    "target_user_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                }
+            },
+            "CreateTemplateInput": {
+                "type": "object",
+                "description": "Input for creating a shift template",
+                "required": [
+                    "role",
+                    "label",
+                    "font_color",
+                    "bk_color",
+                    "is_spa",
+                    "is_dcc"
+                ],
+                "properties": {
+                    "bk_color": {
+                        "type": "string"
+                    },
+                    "end": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "font_color": {
+                        "type": "string"
+                    },
+                    "is_dcc": {
+                        "type": "boolean"
+                    },
+                    "is_spa": {
+                        "type": "boolean"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "money_per_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "pa_value": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "role": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "start": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "CreateUserProfileRequest": {
+                "type": "object",
+                "description": "Request for creating a user profile without Clerk account",
+                "required": [
+                    "full_name",
+                    "short_name"
+                ],
+                "properties": {
+                    "auth_pin": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "comment": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "full_name": {
+                        "type": "string"
+                    },
+                    "gmc": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "primary_email": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "secondary_emails": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "short_name": {
+                        "type": "string"
+                    },
+                    "tel": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "CreateUserRoleInput": {
+                "type": "object",
+                "description": "Input for creating a user role assignment",
+                "required": [
+                    "role_id",
+                    "user_profile_id",
+                    "can_edit_rota",
+                    "can_access_diary",
+                    "can_work_shifts",
+                    "can_edit_templates",
+                    "can_edit_staff",
+                    "can_view_staff_details"
+                ],
+                "properties": {
+                    "can_access_diary": {
+                        "type": "boolean"
+                    },
+                    "can_edit_rota": {
+                        "type": "boolean"
+                    },
+                    "can_edit_staff": {
+                        "type": "boolean"
+                    },
+                    "can_edit_templates": {
+                        "type": "boolean"
+                    },
+                    "can_view_staff_details": {
+                        "type": "boolean"
+                    },
+                    "can_work_shifts": {
+                        "type": "boolean"
+                    },
+                    "role_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "user_profile_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "CreateWorkplaceInput": {
+                "type": "object",
+                "description": "Input for creating a workplace",
+                "properties": {
+                    "address": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "hospital": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "ward": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "DiaryEntry": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "role_id",
+                    "date",
+                    "al",
+                    "sl",
+                    "pl",
+                    "created_at",
+                    "created_by",
+                    "deleted"
+                ],
+                "properties": {
+                    "al": {
+                        "type": "boolean"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "created_by": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "date": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "deleted": {
+                        "type": "boolean"
+                    },
+                    "entry": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "pl": {
+                        "type": "boolean"
+                    },
+                    "role_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "sl": {
+                        "type": "boolean"
+                    },
+                    "user_profile_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    }
+                }
+            },
+            "DiaryMutationResponse": {
+                "type": "object",
+                "description": "Response for diary mutations",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "message": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "JobPlan": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "user_role",
+                    "user_profile_id",
+                    "al_per_year",
+                    "sl_per_year",
+                    "pl_per_year",
+                    "from"
+                ],
+                "properties": {
+                    "al_per_year": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "comment": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "dcc_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "dcc_pa": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "from": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "pl_per_year": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "sl_per_year": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "spa_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "spa_pa": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "until": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date"
+                    },
+                    "user_profile_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "user_role": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "JobPlanMutationResponse": {
+                "type": "object",
+                "description": "Response for job plan mutations",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "message": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "MarketplaceMutationResponse": {
+                "type": "object",
+                "description": "Response for marketplace mutations",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "message": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "PinResponse": {
+                "type": "object",
+                "description": "Response for PIN operations",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "message": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "new_pin": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "RespondToProposalInput": {
+                "type": "object",
+                "description": "Input for responding to a proposed swap (approve or reject by target user)",
+                "required": [
+                    "accept"
+                ],
+                "properties": {
+                    "accept": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "Role": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "workplace",
+                    "role_name"
+                ],
+                "properties": {
+                    "Workplaces": {
+                        "oneOf": [
+                            {
+                                "type": "null"
+                            },
+                            {
+                                "$ref": "#/components/schemas/Workplace"
+                            }
+                        ]
+                    },
+                    "id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "role_name": {
+                        "type": "string"
+                    },
+                    "workplace": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "RoleMutationResponse": {
+                "type": "object",
+                "description": "Response for role mutations",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "message": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "SearchUsersRequest": {
+                "type": "object",
+                "description": "Request for searching users by name or email",
+                "required": [
+                    "query"
+                ],
+                "properties": {
+                    "query": {
+                        "type": "string"
+                    },
+                    "roleId": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    }
+                }
+            },
+            "Shift": {
+                "type": "object",
+                "required": [
+                    "uuid",
+                    "role",
+                    "label",
+                    "pa_value",
+                    "font_color",
+                    "bk_color",
+                    "is_locum",
+                    "published",
+                    "date",
+                    "created_at",
+                    "is_dcc",
+                    "is_spa",
+                    "created_by"
+                ],
+                "properties": {
+                    "bk_color": {
+                        "type": "string"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "created_by": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "date": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "end": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "font_color": {
+                        "type": "string"
+                    },
+                    "is_dcc": {
+                        "type": "boolean"
+                    },
+                    "is_locum": {
+                        "type": "boolean"
+                    },
+                    "is_spa": {
+                        "type": "boolean"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "money_per_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "pa_value": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "published": {
+                        "type": "boolean"
+                    },
+                    "role": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "start": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "time_off": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "user_profile_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "uuid": {
+                        "type": "string",
+                        "format": "uuid"
+                    }
+                }
+            },
+            "ShiftMutationResponse": {
+                "type": "object",
+                "description": "Response after successful mutation",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "message": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "shift_uuid": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uuid"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "ShiftRequest": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "shift_id",
+                    "requester_id",
+                    "type",
+                    "status",
+                    "created_at",
+                    "updated_at"
+                ],
+                "properties": {
+                    "candidate_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "notes": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "requester_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "resolved_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "resolved_by": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "shift_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "target_shift_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uuid"
+                    },
+                    "target_user_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                }
+            },
+            "ShiftRequestWithDetails": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/ShiftRequest"
+                    },
+                    {
+                        "type": "object",
+                        "required": [
+                            "shift_date",
+                            "shift_label",
+                            "shift_role_id",
+                            "shift_role_name",
+                            "requester_name",
+                            "requester_short_name",
+                            "role_auto_approve"
+                        ],
+                        "properties": {
+                            "candidate_name": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "candidate_short_name": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "requester_name": {
+                                "type": "string"
+                            },
+                            "requester_short_name": {
+                                "type": "string"
+                            },
+                            "role_auto_approve": {
+                                "type": "boolean"
+                            },
+                            "shift_date": {
+                                "type": "string",
+                                "format": "date"
+                            },
+                            "shift_end": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "shift_label": {
+                                "type": "string"
+                            },
+                            "shift_role_id": {
+                                "type": "integer",
+                                "format": "int32"
+                            },
+                            "shift_role_name": {
+                                "type": "string"
+                            },
+                            "shift_start": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "shift_user_id": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
+                                "format": "int32"
+                            },
+                            "target_shift_date": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "format": "date"
+                            },
+                            "target_shift_end": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "target_shift_label": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "target_shift_start": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "target_user_name": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "target_user_short_name": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            }
+                        }
+                    }
+                ]
+            },
+            "ShiftTemplate": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "role",
+                    "label",
+                    "is_spa",
+                    "is_dcc"
+                ],
+                "properties": {
+                    "bk_color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "end": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "font_color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "is_dcc": {
+                        "type": "boolean"
+                    },
+                    "is_spa": {
+                        "type": "boolean"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "money_per_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "pa_value": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "role": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "start": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "StaffFilterOption": {
+                "type": "object",
+                "required": [
+                    "user_profile_id",
+                    "short_name",
+                    "full_name"
+                ],
+                "properties": {
+                    "color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "full_name": {
+                        "type": "string"
+                    },
+                    "short_name": {
+                        "type": "string"
+                    },
+                    "user_profile_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "SuccessResponse": {
+                "type": "object",
+                "description": "Generic success response",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "TemplateMutationResponse": {
+                "type": "object",
+                "description": "Response for template mutations",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "message": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "TimeOffCategory": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "label",
+                    "short_name",
+                    "font_color",
+                    "bk_color"
+                ],
+                "properties": {
+                    "bk_color": {
+                        "type": "string"
+                    },
+                    "font_color": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "short_name": {
+                        "type": "string"
+                    }
+                }
+            },
+            "UpdateJobPlanInput": {
+                "type": "object",
+                "description": "Input for updating a job plan",
+                "properties": {
+                    "al_per_year": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "comment": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "dcc_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "dcc_pa": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "from": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date"
+                    },
+                    "pl_per_year": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "sl_per_year": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "spa_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "spa_pa": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "until": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date"
+                    },
+                    "user_profile_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "user_role": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    }
+                }
+            },
+            "UpdateOwnProfileInput": {
+                "type": "object",
+                "description": "Input for updating own profile (self-service)",
+                "required": [
+                    "short_name"
+                ],
+                "properties": {
+                    "color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "short_name": {
+                        "type": "string"
+                    },
+                    "tel": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "UpdateRoleInput": {
+                "type": "object",
+                "description": "Input for updating a role",
+                "properties": {
+                    "role_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "workplace_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    }
+                }
+            },
+            "UpdateShiftInput": {
+                "type": "object",
+                "description": "Input DTO for updating an existing shift",
+                "properties": {
+                    "bk_color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date"
+                    },
+                    "end": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "font_color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "is_dcc": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "is_locum": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "is_spa": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "label": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "money_per_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "pa_value": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "published": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "role": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "start": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "time_off": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "user_profile_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    }
+                }
+            },
+            "UpdateTemplateInput": {
+                "type": "object",
+                "description": "Input for updating a shift template",
+                "properties": {
+                    "bk_color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "end": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "font_color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "is_dcc": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "is_spa": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "label": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "money_per_hour": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "pa_value": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "format": "float"
+                    },
+                    "role": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "start": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "UpdateUserProfileInput": {
+                "type": "object",
+                "description": "Input for admin updating user profile",
+                "properties": {
+                    "auth_pin": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "comment": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "full_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "gmc": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "primary_email": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "secondary_emails": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "short_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "tel": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "UpdateUserRoleInput": {
+                "type": "object",
+                "description": "Input for updating a user role assignment",
+                "properties": {
+                    "can_access_diary": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "can_edit_rota": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "can_edit_staff": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "can_edit_templates": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "can_view_staff_details": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "can_work_shifts": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "role_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    }
+                }
+            },
+            "UpdateWorkplaceInput": {
+                "type": "object",
+                "description": "Input for updating a workplace",
+                "properties": {
+                    "address": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "hospital": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "ward": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "User": {
+                "type": "object",
+                "required": [
+                    "user_profile_id",
+                    "auth_id",
+                    "full_name",
+                    "short_name",
+                    "is_super_admin",
+                    "created_at",
+                    "is_generic_login"
+                ],
+                "properties": {
+                    "auth_id": {
+                        "type": "string"
+                    },
+                    "auth_pin": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "comment": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "full_name": {
+                        "type": "string"
+                    },
+                    "gmc": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "is_generic_login": {
+                        "type": "boolean"
+                    },
+                    "is_super_admin": {
+                        "type": "boolean"
+                    },
+                    "primary_email": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "secondary_emails": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "short_name": {
+                        "type": "string"
+                    },
+                    "tel": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "user_profile_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "UserRole": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "role_id",
+                    "user_profile_id",
+                    "can_edit_rota",
+                    "can_access_diary",
+                    "can_work_shifts",
+                    "can_edit_templates",
+                    "can_edit_staff",
+                    "can_view_staff_details",
+                    "created_at"
+                ],
+                "properties": {
+                    "Roles": {
+                        "oneOf": [
+                            {
+                                "type": "null"
+                            },
+                            {
+                                "$ref": "#/components/schemas/Role"
+                            }
+                        ]
+                    },
+                    "can_access_diary": {
+                        "type": "boolean"
+                    },
+                    "can_edit_rota": {
+                        "type": "boolean"
+                    },
+                    "can_edit_staff": {
+                        "type": "boolean"
+                    },
+                    "can_edit_templates": {
+                        "type": "boolean"
+                    },
+                    "can_view_staff_details": {
+                        "type": "boolean"
+                    },
+                    "can_work_shifts": {
+                        "type": "boolean"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "role_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "user_profile_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "UserRoleMutationResponse": {
+                "type": "object",
+                "description": "Response for user role mutations",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "message": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "VerifyIdentityRequest": {
+                "type": "object",
+                "description": "Request for verifying identity via PIN (Step 1 of PIN change)",
+                "required": [
+                    "user_profile_id",
+                    "pin"
+                ],
+                "properties": {
+                    "pin": {
+                        "type": "string"
+                    },
+                    "user_profile_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "VerifyIdentityResponse": {
+                "type": "object",
+                "description": "Response for identity verification (contains token)",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "token": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "VerifyPinRequest": {
+                "type": "object",
+                "required": [
+                    "user_profile_id",
+                    "pin"
+                ],
+                "properties": {
+                    "pin": {
+                        "type": "string"
+                    },
+                    "user_profile_id": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "VerifyPinResponse": {
+                "type": "object",
+                "required": [
+                    "valid"
+                ],
+                "properties": {
+                    "valid": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "Workplace": {
+                "type": "object",
+                "required": [
+                    "id"
+                ],
+                "properties": {
+                    "address": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "hospital": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "id": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "ward": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "WorkplaceMutationResponse": {
+                "type": "object",
+                "description": "Response for workplace mutations",
+                "required": [
+                    "success"
+                ],
+                "properties": {
+                    "message": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "success": {
+                        "type": "boolean"
+                    }
+                }
+            }
+        },
+        "securitySchemes": {
+            "cookie_auth": {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": "__session"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "health",
+            "description": "Health check"
+        },
+        {
+            "name": "auth",
+            "description": "Authentication endpoints"
+        },
+        {
+            "name": "users",
+            "description": "User management"
+        },
+        {
+            "name": "shifts",
+            "description": "Shift management"
+        },
+        {
+            "name": "templates",
+            "description": "Shift template management"
+        },
+        {
+            "name": "diary",
+            "description": "Diary entry management"
+        },
+        {
+            "name": "job-plans",
+            "description": "Job plan management"
+        },
+        {
+            "name": "user-roles",
+            "description": "User role assignment management"
+        },
+        {
+            "name": "roles",
+            "description": "Role management"
+        },
+        {
+            "name": "workplaces",
+            "description": "Workplace management"
+        },
+        {
+            "name": "marketplace",
+            "description": "Shift swap marketplace"
+        },
+        {
+            "name": "references",
+            "description": "Reference data"
+        },
+        {
+            "name": "comments",
+            "description": "Comments and COD"
+        },
+        {
+            "name": "audit",
+            "description": "Audit trail"
+        }
+    ]
+}

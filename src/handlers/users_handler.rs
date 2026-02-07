@@ -9,10 +9,11 @@ use crate::{
     auth::{check_email_in_clerk, generate_pin_token, validate_pin_token},
     extractors::AuthenticatedUser,
     models::{
-        ChangeOwnPinInput, ChangeProfilePinRequest, CheckEmailRequest, CheckEmailResponse,
-        CreateUserProfileRequest, PinResponse, SearchUsersRequest, StaffFilterOption,
-        SuccessResponse, UpdateOwnProfileInput, UpdateUserProfileInput, User,
-        VerifyIdentityRequest, VerifyIdentityResponse,
+        ChangeOwnPinInput, ChangePasswordInput, ChangeProfilePinRequest, CheckEmailRequest,
+        CheckEmailResponse, CreateLoginInput, CreateLoginResponse, CreateUserProfileRequest,
+        PinResponse, SearchUsersRequest, StaffFilterOption, SuccessResponse,
+        UpdateOwnProfileInput, UpdateUserProfileInput, User, VerifyIdentityRequest,
+        VerifyIdentityResponse,
     },
     AppError, AppResult, AppState,
 };
@@ -1047,6 +1048,268 @@ pub async fn change_profile_pin(
     tracing::info!(
         user_profile_id,
         "Profile PIN changed successfully via token"
+    );
+
+    Ok(Json(SuccessResponse { success: true }))
+}
+
+/// POST /api/users/create-login - Create Clerk account for existing user profile
+#[utoipa::path(
+    post,
+    path = "/api/users/create-login",
+    request_body = CreateLoginInput,
+    responses(
+        (status = 200, description = "Clerk account created and linked", body = CreateLoginResponse),
+        (status = 400, description = "Invalid input or email already exists"),
+        (status = 403, description = "Super admin permission required"),
+        (status = 404, description = "User profile not found")
+    ),
+    tag = "users",
+    security(("cookie_auth" = []))
+)]
+pub async fn create_login(
+    State(state): State<Arc<AppState>>,
+    auth: AuthenticatedUser,
+    Json(req): Json<CreateLoginInput>,
+) -> AppResult<Json<CreateLoginResponse>> {
+    // Check permission - super admin only
+    if !auth.is_super_admin {
+        return Err(AppError::Forbidden(
+            "Super admin permission required".to_string(),
+        ));
+    }
+
+    // Verify user profile exists
+    let user = sqlx::query_as::<_, User>(
+        r#"SELECT * FROM "Users" WHERE user_profile_id = $1"#,
+    )
+    .bind(req.user_profile_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("User profile not found".to_string()))?;
+
+    // Check if email is already used in Clerk
+    let email_exists = check_email_in_clerk(&req.email, &state.config.clerk_secret_key).await?;
+    if email_exists {
+        return Err(AppError::BadRequest(
+            "Email already registered with Clerk".to_string(),
+        ));
+    }
+
+    // Validate PIN format if provided (for generic accounts)
+    if let Some(ref pin) = req.pin {
+        if pin.len() != 5 || !pin.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AppError::BadRequest(
+                "PIN must be exactly 5 digits".to_string(),
+            ));
+        }
+    }
+
+    // Call Clerk API to create user
+    let client = reqwest::Client::new();
+    let clerk_request = serde_json::json!({
+        "email_address": [req.email],
+        "password": req.temp_password,
+        "skip_password_requirement": req.is_generic_login,
+    });
+
+    tracing::info!(
+        user_profile_id = req.user_profile_id,
+        email = %req.email,
+        is_generic = req.is_generic_login,
+        "Creating Clerk account"
+    );
+
+    let response = client
+        .post("https://api.clerk.com/v1/users")
+        .header("Authorization", format!("Bearer {}", state.config.clerk_secret_key))
+        .header("Content-Type", "application/json")
+        .json(&clerk_request)
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to call Clerk API");
+            AppError::Internal(format!("Failed to create Clerk user: {}", e))
+        })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        tracing::error!(status = %status, body, "Clerk API returned error");
+        return Err(AppError::Internal(format!(
+            "Clerk API error: {} - {}",
+            status, body
+        )));
+    }
+
+    let clerk_user: serde_json::Value = response.json().await.map_err(|e| {
+        tracing::error!(error = %e, "Failed to parse Clerk response");
+        AppError::Internal(format!("Failed to parse Clerk response: {}", e))
+    })?;
+
+    let auth_id = clerk_user["id"]
+        .as_str()
+        .ok_or_else(|| AppError::Internal("Clerk response missing user id".to_string()))?
+        .to_string();
+
+    // Update user profile with Clerk auth_id and PIN (if provided)
+    if let Some(pin) = req.pin {
+        sqlx::query(
+            r#"UPDATE "Users" SET auth_id = $1, auth_pin = $2 WHERE user_profile_id = $3"#,
+        )
+        .bind(&auth_id)
+        .bind(&pin)
+        .bind(req.user_profile_id)
+        .execute(&state.db)
+        .await?;
+    } else {
+        sqlx::query(r#"UPDATE "Users" SET auth_id = $1 WHERE user_profile_id = $2"#)
+            .bind(&auth_id)
+            .bind(req.user_profile_id)
+            .execute(&state.db)
+            .await?;
+    }
+
+    tracing::info!(
+        user_profile_id = req.user_profile_id,
+        auth_id = %auth_id,
+        "Clerk account created and linked successfully"
+    );
+
+    Ok(Json(CreateLoginResponse {
+        auth_id,
+        user_id: req.user_profile_id,
+        is_generic_login: req.is_generic_login,
+    }))
+}
+
+/// POST /api/users/me/password - Change own password (self-service)
+#[utoipa::path(
+    post,
+    path = "/api/users/me/password",
+    request_body = ChangePasswordInput,
+    responses(
+        (status = 200, description = "Password changed successfully", body = SuccessResponse),
+        (status = 400, description = "Invalid input or passwords don't match"),
+        (status = 401, description = "Current password incorrect"),
+        (status = 403, description = "Generic accounts cannot change password")
+    ),
+    tag = "users",
+    security(("cookie_auth" = []))
+)]
+pub async fn change_own_password(
+    State(state): State<Arc<AppState>>,
+    auth: AuthenticatedUser,
+    Json(input): Json<ChangePasswordInput>,
+) -> AppResult<Json<SuccessResponse>> {
+    // Validate new passwords match
+    if input.new_password != input.confirm_new_password {
+        return Err(AppError::BadRequest(
+            "New passwords do not match".to_string(),
+        ));
+    }
+
+    // Get user to check generic account status and auth_id
+    let user = sqlx::query_as::<_, User>(r#"SELECT * FROM "Users" WHERE user_profile_id = $1"#)
+        .bind(auth.profile_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    if user.is_generic_login {
+        return Err(AppError::Forbidden(
+            "Generic accounts cannot change their password".to_string(),
+        ));
+    }
+
+    let clerk_user_id = user.auth_id;
+
+    // Verify current password with Clerk
+    let client = reqwest::Client::new();
+    let verify_request = serde_json::json!({
+        "password": input.current_password,
+    });
+
+    tracing::info!(
+        user_profile_id = auth.profile_id,
+        "Verifying current password with Clerk"
+    );
+
+    let verify_response = client
+        .post(format!(
+            "https://api.clerk.com/v1/users/{}/verify_password",
+            clerk_user_id
+        ))
+        .header(
+            "Authorization",
+            format!("Bearer {}", state.config.clerk_secret_key),
+        )
+        .header("Content-Type", "application/json")
+        .json(&verify_request)
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to verify password with Clerk");
+            AppError::Internal(format!("Failed to verify password: {}", e))
+        })?;
+
+    if !verify_response.status().is_success() {
+        let status = verify_response.status();
+        if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY
+            || status == reqwest::StatusCode::BAD_REQUEST
+        {
+            return Err(AppError::BadRequest(
+                "Current password is incorrect".to_string(),
+            ));
+        }
+        let body = verify_response.text().await.unwrap_or_default();
+        tracing::error!(status = %status, body, "Clerk password verification failed");
+        return Err(AppError::Internal(format!(
+            "Password verification failed: {} - {}",
+            status, body
+        )));
+    }
+
+    // Update password with Clerk
+    let update_request = serde_json::json!({
+        "password": input.new_password,
+    });
+
+    tracing::info!(
+        user_profile_id = auth.profile_id,
+        "Updating password with Clerk"
+    );
+
+    let update_response = client
+        .patch(format!(
+            "https://api.clerk.com/v1/users/{}",
+            clerk_user_id
+        ))
+        .header(
+            "Authorization",
+            format!("Bearer {}", state.config.clerk_secret_key),
+        )
+        .header("Content-Type", "application/json")
+        .json(&update_request)
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to update password with Clerk");
+            AppError::Internal(format!("Failed to update password: {}", e))
+        })?;
+
+    if !update_response.status().is_success() {
+        let status = update_response.status();
+        let body = update_response.text().await.unwrap_or_default();
+        tracing::error!(status = %status, body, "Clerk password update failed");
+        return Err(AppError::Internal(format!(
+            "Password update failed: {} - {}",
+            status, body
+        )));
+    }
+
+    tracing::info!(
+        user_profile_id = auth.profile_id,
+        "Password changed successfully"
     );
 
     Ok(Json(SuccessResponse { success: true }))

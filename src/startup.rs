@@ -65,14 +65,18 @@ pub fn build_router(state: Arc<crate::AppState>) -> Router {
         .route("/", get(handlers::roles_handler::get_roles))
         .route("/", post(handlers::roles_handler::create_role))
         .route("/{id}", put(handlers::roles_handler::update_role))
-        .route("/{id}", delete(handlers::roles_handler::delete_role));
+        .route("/{id}", delete(handlers::roles_handler::delete_role))
+        .route("/{id}/dependencies", get(handlers::roles_handler::get_role_dependencies))
+        .route("/{id}/nuke", delete(handlers::roles_handler::nuke_role));
 
     // Workplace routes
     let workplace_routes = Router::new()
         .route("/", get(handlers::workplaces_handler::get_workplaces))
         .route("/", post(handlers::workplaces_handler::create_workplace))
         .route("/{id}", put(handlers::workplaces_handler::update_workplace))
-        .route("/{id}", delete(handlers::workplaces_handler::delete_workplace));
+        .route("/{id}", delete(handlers::workplaces_handler::delete_workplace))
+        .route("/{id}/dependencies", get(handlers::workplaces_handler::get_workplace_dependencies))
+        .route("/{id}/nuke", delete(handlers::workplaces_handler::nuke_workplace));
 
     // User Role routes
     let user_role_routes = Router::new()
@@ -86,6 +90,7 @@ pub fn build_router(state: Arc<crate::AppState>) -> Router {
         .route("/", get(handlers::users_handler::get_users))
         .route("/me", put(handlers::users_handler::update_own_profile))
         .route("/me/pin", post(handlers::users_handler::change_own_pin))
+        .route("/me/password", post(handlers::users_handler::change_own_password))
         .route("/substantive", get(handlers::users_handler::get_substantive_users))
         .route("/locum", post(handlers::users_handler::get_locum_users))
         .route("/staff-list", get(handlers::users_handler::get_staff_list))
@@ -95,6 +100,7 @@ pub fn build_router(state: Arc<crate::AppState>) -> Router {
         .route("/check-email", post(handlers::users_handler::check_email_usage))
         .route("/verify-identity", post(handlers::users_handler::verify_profile_identity))
         .route("/change-profile-pin", post(handlers::users_handler::change_profile_pin))
+        .route("/create-login", post(handlers::users_handler::create_login))
         // Existing routes
         .route("/profiles/{id}", put(handlers::users_handler::update_user_profile))
         .route("/{id}/reset-pin", post(handlers::users_handler::reset_user_pin))

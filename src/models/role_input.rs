@@ -50,3 +50,18 @@ pub struct WorkplaceMutationResponse {
     pub success: bool,
     pub message: Option<String>,
 }
+
+/// Dependency count for workplace/role deletion
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DependencyCount {
+    pub roles: i32,
+    pub user_roles: i32,
+    pub job_plans: i32,
+    pub shifts: i32,
+    pub shift_requests: i32,
+    pub templates: i32,
+    pub diary_entries: i32,
+    pub audit_entries: i32,
+    pub cod_entries: i32,
+    pub unique_staff: i32,
+}

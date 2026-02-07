@@ -8,7 +8,7 @@ use utoipa::IntoParams;
 
 use crate::{
     extractors::AuthenticatedUser,
-    models::{CreateRoleInput, Role, RoleMutationResponse, UpdateRoleInput, Workplace},
+    models::{CreateRoleInput, DependencyCount, Role, RoleMutationResponse, UpdateRoleInput, Workplace},
     AppError, AppResult, AppState,
 };
 
@@ -266,6 +266,235 @@ pub async fn delete_role(
     Ok(Json(RoleMutationResponse {
         success: true,
         message: Some("Role deleted successfully".to_string()),
+    }))
+}
+
+/// GET /api/roles/{id}/dependencies - Get dependency counts before deletion
+#[utoipa::path(
+    get,
+    path = "/api/roles/{id}/dependencies",
+    params(
+        ("id" = i32, Path, description = "Role ID")
+    ),
+    responses(
+        (status = 200, description = "Dependency counts", body = DependencyCount),
+        (status = 403, description = "Super admin permission required")
+    ),
+    tag = "roles",
+    security(("cookie_auth" = []))
+)]
+pub async fn get_role_dependencies(
+    State(state): State<Arc<AppState>>,
+    Path(role_id): Path<i32>,
+    auth: AuthenticatedUser,
+) -> AppResult<Json<DependencyCount>> {
+    // Check permission - super admin only
+    if !auth.is_super_admin {
+        return Err(AppError::Forbidden(
+            "Super admin permission required".to_string(),
+        ));
+    }
+
+    // Count dependencies for this role
+    let user_roles_count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*)::int8 FROM "UserRoles" WHERE role_id = $1"#
+    )
+    .bind(role_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let job_plans_count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*)::int8 FROM "JobPlans" WHERE user_role = $1"#
+    )
+    .bind(role_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let shifts_count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*)::int8 FROM "Shifts" WHERE role = $1"#
+    )
+    .bind(role_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let templates_count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*)::int8 FROM "ShiftTemplates" WHERE role = $1"#
+    )
+    .bind(role_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let diary_count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*)::int8 FROM "Diary" WHERE role_id = $1"#
+    )
+    .bind(role_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let audit_count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*)::int8 FROM "ShiftAudit" WHERE role = $1"#
+    )
+    .bind(role_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let cod_count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*)::int8 FROM "COD" WHERE role_id = $1"#
+    )
+    .bind(role_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    // Get shift UUIDs for marketplace requests
+    let shift_uuids: Vec<String> = sqlx::query_scalar(
+        r#"SELECT uuid::text FROM "Shifts" WHERE role = $1"#
+    )
+    .bind(role_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let shift_requests_count: i64 = if !shift_uuids.is_empty() {
+        let uuids_str = shift_uuids.iter().map(|u| format!("'{}'", u)).collect::<Vec<_>>().join(",");
+        sqlx::query_scalar(
+            &format!(r#"SELECT COUNT(*)::int8 FROM "ShiftRequests" WHERE shift_id::text IN ({})"#, uuids_str)
+        )
+        .fetch_one(&state.db)
+        .await?
+    } else {
+        0
+    };
+
+    // Get unique staff count
+    let unique_staff: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(DISTINCT user_profile_id)::int8 FROM "UserRoles" WHERE role_id = $1"#
+    )
+    .bind(role_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(Json(DependencyCount {
+        roles: 1,  // Single role
+        user_roles: user_roles_count as i32,
+        job_plans: job_plans_count as i32,
+        shifts: shifts_count as i32,
+        shift_requests: shift_requests_count as i32,
+        templates: templates_count as i32,
+        diary_entries: diary_count as i32,
+        audit_entries: audit_count as i32,
+        cod_entries: cod_count as i32,
+        unique_staff: unique_staff as i32,
+    }))
+}
+
+/// DELETE /api/roles/{id}/nuke - CASCADE delete role and ALL related data
+#[utoipa::path(
+    delete,
+    path = "/api/roles/{id}/nuke",
+    params(
+        ("id" = i32, Path, description = "Role ID")
+    ),
+    responses(
+        (status = 200, description = "Role and all dependencies deleted", body = RoleMutationResponse),
+        (status = 403, description = "Super admin permission required"),
+        (status = 404, description = "Role not found")
+    ),
+    tag = "roles",
+    security(("cookie_auth" = []))
+)]
+pub async fn nuke_role(
+    State(state): State<Arc<AppState>>,
+    Path(role_id): Path<i32>,
+    auth: AuthenticatedUser,
+) -> AppResult<Json<RoleMutationResponse>> {
+    // Check permission - super admin only
+    if !auth.is_super_admin {
+        return Err(AppError::Forbidden(
+            "Super admin permission required".to_string(),
+        ));
+    }
+
+    tracing::warn!("⚠️ NUKE: Starting cascade delete of role {}", role_id);
+
+    // Start transaction
+    let mut tx = state.db.begin().await?;
+
+    // Get shift UUIDs for this role
+    let shift_uuids: Vec<String> = sqlx::query_scalar(
+        r#"SELECT uuid::text FROM "Shifts" WHERE role = $1"#
+    )
+    .bind(role_id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    // Delete in order (deepest children → parent):
+
+    // 1. Shift requests (references shifts)
+    if !shift_uuids.is_empty() {
+        let uuids_str = shift_uuids.iter().map(|u| format!("'{}'", u)).collect::<Vec<_>>().join(",");
+        sqlx::query(&format!(r#"DELETE FROM "ShiftRequests" WHERE shift_id::text IN ({})"#, uuids_str))
+            .execute(&mut *tx)
+            .await?;
+        tracing::info!("NUKE: Deleted shift requests");
+    }
+
+    // 2. Job plans (references role)
+    sqlx::query(r#"DELETE FROM "JobPlans" WHERE user_role = $1"#)
+        .bind(role_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 3. Shift audit trail
+    sqlx::query(r#"DELETE FROM "ShiftAudit" WHERE role = $1"#)
+        .bind(role_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 4. Diary entries
+    sqlx::query(r#"DELETE FROM "Diary" WHERE role_id = $1"#)
+        .bind(role_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 5. Shifts
+    sqlx::query(r#"DELETE FROM "Shifts" WHERE role = $1"#)
+        .bind(role_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 6. Shift templates
+    sqlx::query(r#"DELETE FROM "ShiftTemplates" WHERE role = $1"#)
+        .bind(role_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 7. User role assignments
+    sqlx::query(r#"DELETE FROM "UserRoles" WHERE role_id = $1"#)
+        .bind(role_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 8. COD entries
+    sqlx::query(r#"DELETE FROM "COD" WHERE role_id = $1"#)
+        .bind(role_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 9. Finally, the role itself
+    let result = sqlx::query(r#"DELETE FROM "Roles" WHERE id = $1"#)
+        .bind(role_id)
+        .execute(&mut *tx)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound(format!("Role {} not found", role_id)));
+    }
+
+    tx.commit().await?;
+    tracing::warn!("⚠️ NUKE: Role {} annihilated", role_id);
+
+    Ok(Json(RoleMutationResponse {
+        success: true,
+        message: Some("Role and all dependencies deleted".to_string()),
     }))
 }
 

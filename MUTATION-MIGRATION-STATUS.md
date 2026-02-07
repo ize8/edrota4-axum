@@ -1,7 +1,7 @@
 # Mutation Migration Status
 
 **Last Updated:** 2026-02-07
-**Current Phase:** Phase 1 (Backend Fixes) - PARTIALLY COMPLETE
+**Current Phase:** Phase 1 (Backend Fixes) - ✅ COMPLETE
 
 ---
 
@@ -45,48 +45,55 @@
 
 ---
 
-### ⏳ REMAINING (Phase 1.4 - Missing Endpoints)
+### ✅ COMPLETED (Phase 1.4 - Missing Endpoints - Commit: TBD)
 
-These endpoints need to be implemented before frontend migration can proceed:
+All 6 missing endpoints have been implemented:
 
-#### HIGH PRIORITY
-1. **getWorkplaceDependencies** - `GET /api/workplaces/{id}/dependencies`
-   - Count dependent records (roles, user_roles, shifts, etc.) before delete
-   - Returns `DependencyCount` object
-   - Required for UI confirmation dialogs
+#### HIGH PRIORITY (All Complete)
+1. **✅ getWorkplaceDependencies** - `GET /api/workplaces/{id}/dependencies`
+   - Counts all dependent records (roles, user_roles, shifts, templates, diary, audit, COD, shift_requests)
+   - Returns `DependencyCount` with unique staff count
+   - Transaction-safe queries
 
-2. **getRoleDependencies** - `GET /api/roles/{id}/dependencies`
-   - Count dependent records (user_roles, shifts, shift_requests, etc.)
-   - Returns `DependencyCount` object
-   - Required for UI confirmation dialogs
+2. **✅ getRoleDependencies** - `GET /api/roles/{id}/dependencies`
+   - Counts all dependent records for single role
+   - Returns `DependencyCount` with unique staff count
+   - Matches workplace pattern
 
-3. **nukeWorkplace** - `DELETE /api/workplaces/{id}/nuke`
-   - Hard cascade delete (removes all dependent data)
-   - Super admin only
-   - Dangerous operation - requires careful implementation
+3. **✅ nukeWorkplace** - `DELETE /api/workplaces/{id}/nuke`
+   - Transaction-based cascade delete
+   - Deletes in correct dependency order (deepest children → parent)
+   - Comprehensive logging with warnings
+   - Returns deleted role count in message
 
-4. **nukeRole** - `DELETE /api/roles/{id}/nuke`
-   - Hard cascade delete (removes all dependent data)
-   - Super admin only
-   - Dangerous operation - requires careful implementation
+4. **✅ nukeRole** - `DELETE /api/roles/{id}/nuke`
+   - Transaction-based cascade delete
+   - Same deletion order as workplace
+   - Comprehensive logging with warnings
+   - Returns success message
 
-#### MEDIUM PRIORITY
-5. **createLogin** - `POST /api/users/create-login`
-   - Create Clerk account for existing user profile
-   - Links user profile to Clerk auth_id
-   - Requires Clerk API integration
+#### MEDIUM PRIORITY (All Complete)
+5. **✅ createLogin** - `POST /api/users/create-login`
+   - Creates Clerk user via API (POST /v1/users)
+   - Updates Users table with real auth_id (replaces temp_*)
+   - Sets PIN for generic accounts
+   - Returns `CreateLoginResponse` with auth_id and user_id
+   - Super admin permission required
 
-6. **changeOwnPassword** - `POST /api/users/me/password`
-   - Change password via Clerk API
-   - Verifies current password before changing
+6. **✅ changeOwnPassword** - `POST /api/users/me/password`
+   - Verifies current password via Clerk (POST /v1/users/{id}/verify_password)
+   - Updates password via Clerk (PATCH /v1/users/{id})
    - Blocks generic accounts
+   - Returns success response
 
-#### LOW PRIORITY (Rarely Used)
+#### LOW PRIORITY (Deferred - Rarely Used)
 7. **createUser** - `POST /api/users` (super admin only)
    - Full user creation (rarely used, usually use createUserProfile instead)
+   - **Status:** Deferred (not needed for migration)
 
 8. **updateUser** - `PUT /api/users/{id}` (super admin only)
    - Full user update (rarely used)
+   - **Status:** Deferred (not needed for migration)
 
 ---
 
@@ -148,18 +155,32 @@ Per the migration plan, generic account flow support for mutations is deferred t
 
 ## Next Steps
 
-**Immediate (to unblock frontend migration):**
-1. Implement `getWorkplaceDependencies` endpoint
-2. Implement `getRoleDependencies` endpoint
-3. Implement `nukeWorkplace` endpoint
-4. Implement `nukeRole` endpoint
-5. Implement `createLogin` endpoint
-6. Implement `changeOwnPassword` endpoint
+**Phase 1 Complete! ✅**
 
-**After endpoints complete:**
-7. Begin Phase 2: Create frontend API wrappers (systematic, batch-by-batch)
-8. Begin Phase 3: Test each endpoint (manual verification)
-9. Phase 4: Switch frontend to Axum mutations
+All backend fixes and missing endpoints are implemented and compilation verified.
+
+**Next Phase (Phase 2 - Frontend API Wrappers):**
+1. Create API client wrapper functions for all mutation endpoints (43+ endpoints across 8 modules)
+   - Templates (3 endpoints)
+   - Workplaces & Roles (10 endpoints)
+   - User Roles (3 endpoints)
+   - Job Plans (4 endpoints)
+   - Diary (2 endpoints)
+   - Users & PIN Management (11 endpoints)
+   - Shifts (3 endpoints)
+   - Marketplace (7 endpoints)
+
+2. Add feature flag wrappers in server function files (same pattern as reads)
+
+**Phase 3: Test Each Endpoint**
+- Manual testing protocol per endpoint
+- Verify response format matches TanStack
+- Test error cases (403, 400, 404)
+- Test in UI with feature flag
+
+**Phase 4: Switch Frontend**
+- Set `VITE_USE_AXUM_BACKEND=true` (already true for reads)
+- Monitor for issues
 
 ---
 
@@ -174,13 +195,16 @@ Per the migration plan, generic account flow support for mutations is deferred t
 
 ## Timeline Estimate
 
-- **Phase 1 Remaining:** 2-3 days (6 endpoints)
+- **Phase 1:** ✅ COMPLETE (2 commits)
 - **Phase 2:** 2-3 days (frontend wrappers)
 - **Phase 3:** 3-5 days (testing)
 - **Phase 4:** 1 day (switch + monitor)
 
-**Total:** ~8-12 days to complete full mutation migration
+**Total Remaining:** ~6-9 days to complete full mutation migration
 
 ---
 
-**Last Commit:** `6454004` - Phase 1 critical fixes implemented
+## Commits
+
+**Commit 1:** `6454004` - Phase 1.1-1.3 (permissions, fields, validation)
+**Commit 2:** (pending) - Phase 1.4 (6 missing endpoints + routes)

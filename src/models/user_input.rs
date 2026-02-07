@@ -107,3 +107,30 @@ pub struct ChangeProfilePinRequest {
 pub struct SuccessResponse {
     pub success: bool,
 }
+
+/// Input for creating a Clerk login for a user profile
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateLoginInput {
+    pub email: String,
+    pub temp_password: String,
+    pub user_profile_id: i32,
+    #[serde(default)]
+    pub is_generic_login: bool,
+    pub pin: Option<String>,
+}
+
+/// Response for creating a login
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateLoginResponse {
+    pub auth_id: String,
+    pub user_id: i32,
+    pub is_generic_login: bool,
+}
+
+/// Input for changing own password
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ChangePasswordInput {
+    pub current_password: String,
+    pub new_password: String,
+    pub confirm_new_password: String,
+}

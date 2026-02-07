@@ -113,9 +113,12 @@ impl FromRequestParts<Arc<AppState>> for AuthenticatedUser {
             // User not found by auth_id - need email for auto-linking (rare case)
             tracing::debug!(clerk_user_id, "User not found by auth_id, attempting auto-link by email");
 
-            let email = if let Some(email) = claims.email {
-                email
+            // Try to get email from JWT claims (custom claim or standard claim)
+            let email = if let Some(email) = claims.get_email() {
+                email.to_string()
             } else {
+                // Only call Clerk API if email is not in JWT at all
+                tracing::debug!(clerk_user_id, "Email not in JWT claims, fetching from Clerk API");
                 resolve_email(&state.user_cache, &clerk_user_id, &state.config.clerk_secret_key)
                     .await
                     .map_err(|e| {

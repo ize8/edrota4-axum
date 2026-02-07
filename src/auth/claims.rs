@@ -8,10 +8,21 @@ pub struct ClerkClaims {
     pub iss: String,  // Issuer
     pub azp: Option<String>, // Authorized party
 
-    // User data fields (available in Clerk JWTs)
-    pub email: Option<String>,              // Primary email address
+    // Custom claims (set in Clerk Dashboard session token)
+    #[serde(rename = "primaryEmail")]
+    pub primary_email: Option<String>,      // Primary email (custom claim)
+
+    // Standard user data fields (available in Clerk JWTs)
+    pub email: Option<String>,              // Primary email address (fallback)
     pub email_verified: Option<bool>,       // Email verification status
     pub name: Option<String>,               // Full name
     pub given_name: Option<String>,         // First name
     pub family_name: Option<String>,        // Last name
+}
+
+impl ClerkClaims {
+    /// Get the user's email, preferring the custom claim over the standard field
+    pub fn get_email(&self) -> Option<&str> {
+        self.primary_email.as_deref().or(self.email.as_deref())
+    }
 }

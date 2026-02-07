@@ -1,14 +1,24 @@
 use axum::{
-    http::{header, HeaderValue, Method},
-    response::Html,
+    extract::Request,
+    http::{header, HeaderValue, Method, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response, Html},
     routing::{delete, get, post, put},
     Json, Router,
 };
+use subtle::ConstantTimeEq;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
+use tower_http::LatencyUnit;
+use tracing::Level;
 use utoipa::OpenApi;
 
-use crate::{handlers, openapi::ApiDoc};
+use crate::{
+    handlers,
+    middleware::{metrics_middleware, request_id_middleware},
+    openapi::ApiDoc,
+};
 
 pub fn build_router(state: Arc<crate::AppState>) -> Router {
     // CORS configuration
@@ -17,6 +27,27 @@ pub fn build_router(state: Arc<crate::AppState>) -> Router {
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT])
         .allow_credentials(true);
+
+    // Create middleware closure for debug key protection
+    let debug_key = state.config.debug_key.clone();
+    let debug_auth_middleware = move |req: Request, next: Next| {
+        let debug_key = debug_key.clone();
+        async move {
+            let path = req.uri().path();
+            if path == "/metrics" || path == "/debug" {
+                // Check for X-Debug-Key header
+                if let Some(provided_key) = req.headers().get("X-Debug-Key").and_then(|v| v.to_str().ok()) {
+                    // Constant-time comparison
+                    if debug_key.as_bytes().ct_eq(provided_key.as_bytes()).into() {
+                        return next.run(req).await;
+                    }
+                }
+                tracing::warn!("Unauthorized debug endpoint access attempt");
+                return StatusCode::UNAUTHORIZED.into_response();
+            }
+            next.run(req).await
+        }
+    };
 
     // Auth routes
     let auth_routes = Router::new()
@@ -56,6 +87,7 @@ pub fn build_router(state: Arc<crate::AppState>) -> Router {
         .route("/me", put(handlers::users_handler::update_own_profile))
         .route("/me/pin", post(handlers::users_handler::change_own_pin))
         .route("/substantive", get(handlers::users_handler::get_substantive_users))
+        .route("/locum", post(handlers::users_handler::get_locum_users))
         .route("/staff-list", get(handlers::users_handler::get_staff_list))
         // New Phase B endpoints - must come before /{id} to prevent route shadowing
         .route("/search", post(handlers::users_handler::search_users))
@@ -120,6 +152,9 @@ pub fn build_router(state: Arc<crate::AppState>) -> Router {
 
     Router::new()
         .route("/health", get(handlers::health_check))
+        // Protected routes (require DEBUG_KEY header)
+        .route("/metrics", get(handlers::metrics_handler))
+        .route("/debug", get(handlers::debug_handler))
         .nest("/api/auth", auth_routes)
         .nest("/api/references", reference_routes)
         .nest("/api/roles", role_routes)
@@ -135,8 +170,29 @@ pub fn build_router(state: Arc<crate::AppState>) -> Router {
         .nest("/api/marketplace", marketplace_routes)
         .route("/api-docs/openapi.json", get(|| async { Json(ApiDoc::openapi()) }))
         .route("/swagger-ui", get(swagger_ui))
-        .layer(cors)
         .with_state(state)
+        // Apply secret auth middleware to /metrics and /debug routes
+        .layer(middleware::from_fn(debug_auth_middleware))
+        // Add metrics collection middleware
+        .layer(middleware::from_fn(metrics_middleware))
+        // Add tracing middleware for request logging
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(
+                    DefaultMakeSpan::new()
+                        .include_headers(false)  // Don't log headers (security)
+                        .level(Level::INFO),
+                )
+                .on_request(DefaultOnRequest::new().level(Level::DEBUG))
+                .on_response(
+                    DefaultOnResponse::new()
+                        .level(Level::INFO)
+                        .latency_unit(LatencyUnit::Millis),
+                ),
+        )
+        // Add request ID middleware
+        .layer(middleware::from_fn(request_id_middleware))
+        .layer(cors)
 }
 
 async fn swagger_ui() -> Html<&'static str> {

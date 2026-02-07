@@ -4,6 +4,7 @@ mod db;
 mod error;
 mod extractors;
 mod handlers;
+mod middleware;
 mod models;
 mod openapi;
 mod startup;
@@ -17,6 +18,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub use auth::JwksCache;
 pub use config::AppConfig;
 pub use error::{AppError, AppResult};
+pub use handlers::MetricsState;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -24,18 +26,31 @@ pub struct AppState {
     pub jwks_cache: Arc<JwksCache>,
     pub user_cache: Cache<String, String>, // clerk_user_id → email
     pub config: AppConfig,
+    pub metrics: Arc<MetricsState>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "edrota4_axum=debug,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize tracing with conditional JSON/text output
+    let use_json = std::env::var("LOG_FORMAT")
+        .unwrap_or_else(|_| "text".to_string()) == "json";
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "info,edrota4_axum=debug,tower_http=debug".into());
+
+    if use_json {
+        // Structured JSON logging for production
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer().json())
+            .init();
+    } else {
+        // Human-readable for development
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
 
     // Load environment variables
     dotenvy::dotenv().ok();
@@ -54,6 +69,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Database pool created successfully");
 
+    // Initialize metrics recorder
+    let metrics_state = Arc::new(handlers::setup_metrics_recorder());
+    tracing::info!("Metrics recorder initialized");
+
     // Create JWKS cache
     let jwks_cache = Arc::new(JwksCache::new(&config.clerk_domain));
 
@@ -69,6 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         jwks_cache,
         user_cache,
         config,
+        metrics: metrics_state,
     });
 
     // Build router

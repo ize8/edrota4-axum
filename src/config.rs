@@ -7,6 +7,7 @@ pub struct AppConfig {
     pub clerk_publishable_key: String,
     pub clerk_domain: String,
     pub pin_token_secret: String,
+    pub debug_key: String,
 }
 
 impl AppConfig {
@@ -27,12 +28,16 @@ impl AppConfig {
         let pin_token_secret = env::var("PIN_TOKEN_SECRET")
             .map_err(|_| "PIN_TOKEN_SECRET must be set".to_string())?;
 
+        let debug_key = env::var("DEBUG_KEY")
+            .map_err(|_| "DEBUG_KEY must be set".to_string())?;
+
         Ok(Self {
             database_url,
             clerk_secret_key,
             clerk_publishable_key,
             clerk_domain,
             pin_token_secret,
+            debug_key,
         })
     }
 }

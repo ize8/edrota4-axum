@@ -78,29 +78,89 @@ impl FromRequestParts<Arc<AppState>> for AuthenticatedUser {
 
             let clerk_user_id = claims.sub.clone();
 
-            // Resolve email from Clerk API (with caching)
-            let email = resolve_email(&state.user_cache, &clerk_user_id, &state.config.clerk_secret_key)
-                .await
-                .map_err(|e| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        axum::Json(json!({"error": format!("Failed to resolve email: {}", e)})),
-                    )
-                })?;
+            // OPTIMIZATION: Try database lookup FIRST (99% of requests - fast!)
+            // Only fetch email from Clerk API for auto-linking new users (1% of requests)
+            let user_opt = sqlx::query_as::<_, crate::models::User>(
+                r#"SELECT * FROM "Users" WHERE auth_id = $1"#,
+            )
+            .bind(&clerk_user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, clerk_user_id, "Database query failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(json!({"error": "Database error"})),
+                )
+            })?;
 
-            // Resolve profile_id from database
-            let user = resolve_user_profile(&state.db, &clerk_user_id, &email)
-                .await
-                .map_err(|e| {
-                    (
-                        StatusCode::UNAUTHORIZED,
-                        axum::Json(json!({"error": format!("User not found: {}", e)})),
-                    )
-                })?;
+            if let Some(user) = user_opt {
+                // ✓ User found by auth_id - use email from database (FAST!)
+                let email = user.primary_email.clone().unwrap_or_else(|| {
+                    tracing::warn!(clerk_user_id, profile_id = user.user_profile_id, "User has no primary_email");
+                    String::from("")
+                });
+
+                tracing::debug!(clerk_user_id, profile_id = user.user_profile_id, "User found by auth_id");
+                return Ok(AuthenticatedUser {
+                    clerk_user_id,
+                    email,
+                    profile_id: user.user_profile_id,
+                    is_super_admin: user.is_super_admin,
+                });
+            }
+
+            // User not found by auth_id - need email for auto-linking (rare case)
+            tracing::debug!(clerk_user_id, "User not found by auth_id, attempting auto-link by email");
+
+            let email = if let Some(email) = claims.email {
+                email
+            } else {
+                resolve_email(&state.user_cache, &clerk_user_id, &state.config.clerk_secret_key)
+                    .await
+                    .map_err(|e| {
+                        (
+                            StatusCode::UNAUTHORIZED,
+                            axum::Json(json!({"error": format!("Failed to resolve email: {}", e)})),
+                        )
+                    })?
+            };
+
+            // Auto-link user by email
+            let user = sqlx::query_as::<_, crate::models::User>(
+                r#"UPDATE "Users" SET auth_id = $1 WHERE LOWER(primary_email) = LOWER($2) RETURNING *"#,
+            )
+            .bind(&clerk_user_id)
+            .bind(&email)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, clerk_user_id, email, "Auto-link query failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(json!({"error": "Database error"})),
+                )
+            })?
+            .ok_or_else(|| {
+                tracing::warn!(clerk_user_id, email, "User profile not found for auto-linking");
+                (
+                    StatusCode::UNAUTHORIZED,
+                    axum::Json(json!({"error": format!("User profile not found for email: {}", email)})),
+                )
+            })?;
+
+            tracing::info!(
+                clerk_user_id,
+                profile_id = user.user_profile_id,
+                email,
+                "User auto-linked by email"
+            );
+
+            let user_email = user.primary_email.clone().unwrap_or_else(|| email.clone());
 
             Ok(AuthenticatedUser {
                 clerk_user_id,
-                email,
+                email: user_email,
                 profile_id: user.user_profile_id,
                 is_super_admin: user.is_super_admin,
             })

@@ -7,4 +7,11 @@ pub struct ClerkClaims {
     pub iat: i64,     // Issued at timestamp
     pub iss: String,  // Issuer
     pub azp: Option<String>, // Authorized party
+
+    // User data fields (available in Clerk JWTs)
+    pub email: Option<String>,              // Primary email address
+    pub email_verified: Option<bool>,       // Email verification status
+    pub name: Option<String>,               // Full name
+    pub given_name: Option<String>,         // First name
+    pub family_name: Option<String>,        // Last name
 }

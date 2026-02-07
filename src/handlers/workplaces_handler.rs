@@ -47,10 +47,10 @@ pub async fn create_workplace(
     auth: AuthenticatedUser,
     Json(input): Json<CreateWorkplaceInput>,
 ) -> AppResult<Json<Workplace>> {
-    // Check permission
-    if !crate::extractors::permissions::has_permission_by_name(&state.db, auth.profile_id, auth.is_super_admin, "can_edit_staff").await? {
+    // Check permission - super admin only
+    if !auth.is_super_admin {
         return Err(AppError::Forbidden(
-            "Missing can_edit_staff permission".to_string(),
+            "Super admin permission required".to_string(),
         ));
     }
 
@@ -95,10 +95,10 @@ pub async fn update_workplace(
     auth: AuthenticatedUser,
     Json(input): Json<UpdateWorkplaceInput>,
 ) -> AppResult<Json<Workplace>> {
-    // Check permission
-    if !crate::extractors::permissions::has_permission_by_name(&state.db, auth.profile_id, auth.is_super_admin, "can_edit_staff").await? {
+    // Check permission - super admin only
+    if !auth.is_super_admin {
         return Err(AppError::Forbidden(
-            "Missing can_edit_staff permission".to_string(),
+            "Super admin permission required".to_string(),
         ));
     }
 
@@ -187,10 +187,10 @@ pub async fn delete_workplace(
     Path(workplace_id): Path<i64>,
     auth: AuthenticatedUser,
 ) -> AppResult<Json<WorkplaceMutationResponse>> {
-    // Check permission
-    if !crate::extractors::permissions::has_permission_by_name(&state.db, auth.profile_id, auth.is_super_admin, "can_edit_staff").await? {
+    // Check permission - super admin only
+    if !auth.is_super_admin {
         return Err(AppError::Forbidden(
-            "Missing can_edit_staff permission".to_string(),
+            "Super admin permission required".to_string(),
         ));
     }
 

@@ -266,6 +266,37 @@ pub async fn create_user_role(
         ));
     }
 
+    // Check for duplicate assignment
+    let existing: Option<i32> = sqlx::query_scalar(
+        r#"SELECT id FROM "UserRoles" WHERE user_profile_id = $1 AND role_id = $2"#
+    )
+    .bind(input.user_profile_id)
+    .bind(input.role_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    if existing.is_some() {
+        return Err(AppError::BadRequest(
+            "User already has this role assigned".to_string(),
+        ));
+    }
+
+    // Check if user is a generic account
+    let is_generic: bool = sqlx::query_scalar(
+        r#"SELECT COALESCE(is_generic_login, false) FROM "Users" WHERE user_profile_id = $1"#
+    )
+    .bind(input.user_profile_id)
+    .fetch_optional(&state.db)
+    .await?
+    .unwrap_or(false);
+
+    // Block generic accounts from having can_work_shifts permission
+    if is_generic && input.can_work_shifts {
+        return Err(AppError::BadRequest(
+            "Generic accounts cannot have can_work_shifts permission".to_string(),
+        ));
+    }
+
     // Insert the new user role
     let user_role_id: i32 = sqlx::query_scalar(
         r#"
@@ -322,6 +353,33 @@ pub async fn update_user_role(
         return Err(AppError::Forbidden(
             "Missing can_edit_staff permission".to_string(),
         ));
+    }
+
+    // If trying to enable can_work_shifts, check if user is generic
+    if let Some(true) = input.can_work_shifts {
+        // Get user_profile_id for this user_role
+        let user_profile_id: Option<i32> = sqlx::query_scalar(
+            r#"SELECT user_profile_id FROM "UserRoles" WHERE id = $1"#
+        )
+        .bind(user_role_id)
+        .fetch_optional(&state.db)
+        .await?;
+
+        if let Some(uid) = user_profile_id {
+            let is_generic: bool = sqlx::query_scalar(
+                r#"SELECT COALESCE(is_generic_login, false) FROM "Users" WHERE user_profile_id = $1"#
+            )
+            .bind(uid)
+            .fetch_optional(&state.db)
+            .await?
+            .unwrap_or(false);
+
+            if is_generic {
+                return Err(AppError::BadRequest(
+                    "Generic accounts cannot have can_work_shifts permission".to_string(),
+                ));
+            }
+        }
     }
 
     // Build dynamic UPDATE query

@@ -116,23 +116,24 @@ pub async fn create_role(
     auth: AuthenticatedUser,
     Json(input): Json<CreateRoleInput>,
 ) -> AppResult<Json<Role>> {
-    // Check permission
-    if !crate::extractors::permissions::has_permission_by_name(&state.db, auth.profile_id, auth.is_super_admin, "can_edit_staff").await? {
+    // Check permission - super admin only
+    if !auth.is_super_admin {
         return Err(AppError::Forbidden(
-            "Missing can_edit_staff permission".to_string(),
+            "Super admin permission required".to_string(),
         ));
     }
 
     // Insert the new role
     let role_id: i32 = sqlx::query_scalar(
         r#"
-        INSERT INTO "Roles" (workplace_id, role_name)
-        VALUES ($1, $2)
+        INSERT INTO "Roles" (workplace_id, role_name, marketplace_auto_approve)
+        VALUES ($1, $2, $3)
         RETURNING id
         "#,
     )
     .bind(input.workplace_id)
     .bind(&input.role_name)
+    .bind(input.marketplace_auto_approve.unwrap_or(false))
     .fetch_one(&state.db)
     .await?;
 
@@ -165,10 +166,10 @@ pub async fn update_role(
     auth: AuthenticatedUser,
     Json(input): Json<UpdateRoleInput>,
 ) -> AppResult<Json<Role>> {
-    // Check permission
-    if !crate::extractors::permissions::has_permission_by_name(&state.db, auth.profile_id, auth.is_super_admin, "can_edit_staff").await? {
+    // Check permission - super admin only
+    if !auth.is_super_admin {
         return Err(AppError::Forbidden(
-            "Missing can_edit_staff permission".to_string(),
+            "Super admin permission required".to_string(),
         ));
     }
 
@@ -182,6 +183,10 @@ pub async fn update_role(
     }
     if input.role_name.is_some() {
         updates.push(format!("role_name = ${}", bind_count));
+        bind_count += 1;
+    }
+    if input.marketplace_auto_approve.is_some() {
+        updates.push(format!("marketplace_auto_approve = ${}", bind_count));
         bind_count += 1;
     }
 
@@ -203,6 +208,9 @@ pub async fn update_role(
     }
     if let Some(role_name) = &input.role_name {
         query = query.bind(role_name);
+    }
+    if let Some(marketplace_auto_approve) = input.marketplace_auto_approve {
+        query = query.bind(marketplace_auto_approve);
     }
 
     query = query.bind(role_id);
@@ -239,10 +247,10 @@ pub async fn delete_role(
     Path(role_id): Path<i32>,
     auth: AuthenticatedUser,
 ) -> AppResult<Json<RoleMutationResponse>> {
-    // Check permission
-    if !crate::extractors::permissions::has_permission_by_name(&state.db, auth.profile_id, auth.is_super_admin, "can_edit_staff").await? {
+    // Check permission - super admin only
+    if !auth.is_super_admin {
         return Err(AppError::Forbidden(
-            "Missing can_edit_staff permission".to_string(),
+            "Super admin permission required".to_string(),
         ));
     }
 

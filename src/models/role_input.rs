@@ -7,6 +7,8 @@ use utoipa::ToSchema;
 pub struct CreateRoleInput {
     pub workplace_id: i32,
     pub role_name: String,
+    #[serde(default)]
+    pub marketplace_auto_approve: Option<bool>,
 }
 
 /// Input for updating a role
@@ -14,6 +16,7 @@ pub struct CreateRoleInput {
 pub struct UpdateRoleInput {
     pub workplace_id: Option<i32>,
     pub role_name: Option<String>,
+    pub marketplace_auto_approve: Option<bool>,
 }
 
 /// Response for role mutations
@@ -26,7 +29,7 @@ pub struct RoleMutationResponse {
 /// Input for creating a workplace
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateWorkplaceInput {
-    pub hospital: Option<String>,
+    pub hospital: String,  // Required field (not Option)
     pub ward: Option<String>,
     pub address: Option<String>,
     pub code: Option<String>,

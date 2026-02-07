@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     extractors::{permissions, AuthenticatedUser},
-    models::{AcceptRequestInput, AdminDecisionInput, CreateShiftRequestInput, MarketplaceMutationResponse, RespondToProposalInput, ShiftRequestWithDetails},
+    models::{AcceptRequestInput, AdminDecisionInput, CreateShiftRequestInput, MarketplaceMutationResponse, RespondToProposalInput, ShiftRequest, ShiftRequestWithDetails, SwappableShift, UserWithSwappableShifts},
     AppError, AppResult, AppState,
 };
 
@@ -21,6 +21,8 @@ pub struct GetMarketplaceQuery {
     pub role_id: Option<i32>,
     #[serde(rename = "userId")]
     pub user_id: Option<i32>,
+    #[serde(rename = "excludeUserId")]
+    pub exclude_user_id: Option<i32>,
     pub month: Option<i32>,
     pub year: Option<i32>,
 }
@@ -118,10 +120,10 @@ fn row_to_shift_request_with_details(row: ShiftRequestRow) -> ShiftRequestWithDe
             target_shift_id: row.target_shift_id,
             candidate_id: row.candidate_id,
             resolved_by: row.resolved_by,
-            resolved_at: row.resolved_at.map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)),
+            resolved_at: row.resolved_at,
             notes: row.notes,
-            created_at: chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(row.created_at, chrono::Utc),
-            updated_at: chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(row.updated_at, chrono::Utc),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
         },
         shift_date: row.shift_date,
         shift_label: row.shift_label,
@@ -208,7 +210,7 @@ pub async fn get_my_requests(
     })?;
 
     let sql = format!(
-        "{} WHERE sr.requester_id = $1 ORDER BY sr.created_at DESC",
+        "{} WHERE (sr.requester_id = $1 OR sr.target_user_id = $1 OR sr.candidate_id = $1) ORDER BY sr.created_at DESC",
         MARKETPLACE_BASE_QUERY
     );
 
@@ -303,16 +305,29 @@ pub async fn get_approval_requests(
     let mut sql = format!("{} WHERE sr.status = 'PENDING_APPROVAL'", MARKETPLACE_BASE_QUERY);
 
     // Build query with parameterized filters
+    // TanStack only filters by role if roleId > 0
     let rows = if let Some(role_id) = query.role_id {
-        sql.push_str(" AND s.role_id = $1 ORDER BY sr.created_at ASC");
-        sqlx::query_as::<sqlx::Postgres, ShiftRequestRow>(&sql)
-            .bind(role_id)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, role_id, "Failed to fetch approval requests");
-                e
-            })?
+        if role_id > 0 {
+            sql.push_str(" AND s.role_id = $1 ORDER BY sr.created_at ASC");
+            sqlx::query_as::<sqlx::Postgres, ShiftRequestRow>(&sql)
+                .bind(role_id)
+                .fetch_all(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, role_id, "Failed to fetch approval requests");
+                    e
+                })?
+        } else {
+            // roleId = 0 means fetch all (no role filter)
+            sql.push_str(" ORDER BY sr.created_at ASC");
+            sqlx::query_as::<sqlx::Postgres, ShiftRequestRow>(&sql)
+                .fetch_all(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to fetch approval requests with roleId=0");
+                    e
+                })?
+        }
     } else {
         sql.push_str(" ORDER BY sr.created_at ASC");
         sqlx::query_as::<sqlx::Postgres, ShiftRequestRow>(&sql)
@@ -335,7 +350,7 @@ pub async fn get_approval_requests(
     path = "/api/marketplace/dashboard",
     params(GetMarketplaceQuery),
     responses(
-        (status = 200, description = "Dashboard counts for open, my, and incoming requests"),
+        (status = 200, description = "Dashboard data with my requests and incoming swaps"),
         (status = 400, description = "userId required")
     ),
     tag = "marketplace"
@@ -346,90 +361,151 @@ pub async fn get_dashboard(
 ) -> AppResult<Json<serde_json::Value>> {
     let user_id = query.user_id.ok_or_else(|| AppError::BadRequest("userId required".to_string()))?;
 
-    // Get counts for dashboard
-    let open_count: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM "ShiftRequests" sr INNER JOIN "Shifts" s ON sr.shift_id = s.uuid WHERE sr.status = 'OPEN'"#
-    )
-    .fetch_one(&state.db)
-    .await?;
+    // Fetch my requests and incoming swaps in parallel using base query with details
+    let (my_requests_rows, incoming_swaps_rows) = tokio::try_join!(
+        async {
+            // Include requests where user is requester, target, or candidate
+            let sql = format!(
+                "{} WHERE (sr.requester_id = $1 OR sr.target_user_id = $1 OR sr.candidate_id = $1) ORDER BY sr.created_at DESC",
+                MARKETPLACE_BASE_QUERY
+            );
+            sqlx::query_as::<sqlx::Postgres, ShiftRequestRow>(&sql)
+                .bind(user_id)
+                .fetch_all(&state.db)
+                .await
+        },
+        async {
+            let sql = format!(
+                "{} WHERE sr.target_user_id = $1 AND sr.status IN ('PROPOSED', 'PEER_ACCEPTED') ORDER BY sr.created_at DESC",
+                MARKETPLACE_BASE_QUERY
+            );
+            sqlx::query_as::<sqlx::Postgres, ShiftRequestRow>(&sql)
+                .bind(user_id)
+                .fetch_all(&state.db)
+                .await
+        }
+    )?;
 
-    let my_count: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM "ShiftRequests" WHERE requester_id = $1"#
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let my_requests: Vec<ShiftRequestWithDetails> = my_requests_rows
+        .into_iter()
+        .map(row_to_shift_request_with_details)
+        .collect();
 
-    let incoming_count: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM "ShiftRequests" WHERE target_user_id = $1 AND status IN ('PROPOSED', 'PEER_ACCEPTED')"#
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let incoming_swaps: Vec<ShiftRequestWithDetails> = incoming_swaps_rows
+        .into_iter()
+        .map(row_to_shift_request_with_details)
+        .collect();
 
     Ok(Json(serde_json::json!({
-        "open": open_count,
-        "my": my_count,
-        "incoming": incoming_count
+        "myRequests": my_requests,
+        "incomingSwaps": incoming_swaps
     })))
 }
 
-/// GET /api/marketplace/swappable?roleId=&month=&year=
+/// GET /api/marketplace/swappable?roleId=&excludeUserId=&month=&year=
 #[utoipa::path(
     get,
     path = "/api/marketplace/swappable",
     params(GetMarketplaceQuery),
     responses(
-        (status = 200, description = "List of shifts available for swapping (assigned and published)", body = Vec<crate::models::Shift>),
-        (status = 400, description = "roleId, month, and year required")
+        (status = 200, description = "Users with their swappable shifts (grouped by user)", body = Vec<UserWithSwappableShifts>),
+        (status = 400, description = "roleId, excludeUserId, month, and year required")
     ),
     tag = "marketplace"
 )]
 pub async fn get_swappable_shifts(
     State(state): State<Arc<AppState>>,
     Query(query): Query<GetMarketplaceQuery>,
-) -> AppResult<Json<Vec<crate::models::Shift>>> {
+) -> AppResult<Json<Vec<UserWithSwappableShifts>>> {
     let role_id = query.role_id.ok_or_else(|| AppError::BadRequest("roleId required".to_string()))?;
+    let exclude_user_id = query.exclude_user_id.ok_or_else(|| AppError::BadRequest("excludeUserId required".to_string()))?;
     let month = query.month.ok_or_else(|| AppError::BadRequest("month required".to_string()))?;
     let year = query.year.ok_or_else(|| AppError::BadRequest("year required".to_string()))?;
 
-    let shifts = sqlx::query_as::<sqlx::Postgres, crate::models::Shift>(
+    // Get today's date for filtering
+    let today = chrono::Local::now().date_naive().to_string();
+
+    // Determine effective start date (later of: today or first of month)
+    let first_of_month = format!("{}-{:02}-01", year, month);
+    let effective_start = if first_of_month < today { &today } else { &first_of_month };
+
+    // Calculate last day of month
+    use chrono::Datelike;
+    let last_day = if month == 12 {
+        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1).unwrap().pred_opt().unwrap().day()
+    } else {
+        chrono::NaiveDate::from_ymd_opt(year, month as u32 + 1, 1).unwrap().pred_opt().unwrap().day()
+    };
+    let end_of_month = format!("{}-{:02}-{:02}", year, month, last_day);
+
+    #[derive(FromRow)]
+    struct ShiftRow {
+        user_id: i32,
+        user_name: String,
+        shift_uuid: Option<Uuid>,
+        shift_date: Option<NaiveDate>,
+        start_time: Option<String>,
+        end_time: Option<String>,
+        label: Option<String>,
+        time_off_id: Option<i32>,
+    }
+
+    let rows = sqlx::query_as::<_, ShiftRow>(
         r#"
         SELECT
-            uuid,
-            role_id AS role,
-            label,
-            to_char(start, 'HH24:MI') AS start,
-            to_char("end", 'HH24:MI') AS "end",
-            money_per_hour,
-            pa_value,
-            font_color,
-            bk_color,
-            is_locum,
-            published,
-            date,
-            created_at,
-            is_dcc,
-            is_spa,
-            time_off_category_id AS time_off,
-            user_profile_id,
-            created_by
-        FROM "Shifts"
-        WHERE role_id = $1
-        AND EXTRACT(YEAR FROM date) = $2
-        AND EXTRACT(MONTH FROM date) = $3
-        AND user_profile_id IS NOT NULL
-        AND published = true
-        ORDER BY date, start
+            u.user_profile_id AS user_id,
+            u.full_name AS user_name,
+            s.uuid AS shift_uuid,
+            s.date AS shift_date,
+            to_char(s.start, 'HH24:MI') AS start_time,
+            to_char(s."end", 'HH24:MI') AS end_time,
+            s.label,
+            s.time_off_category_id AS time_off_id
+        FROM "Users" u
+        INNER JOIN "UserRoles" ur ON u.user_profile_id = ur.user_profile_id
+        LEFT JOIN "Shifts" s ON s.user_profile_id = u.user_profile_id
+            AND s.date >= $3::DATE
+            AND s.date <= $4::DATE
+        WHERE ur.role_id = $1
+          AND u.user_profile_id != $2
+        ORDER BY u.full_name, s.date
         "#
     )
     .bind(role_id)
-    .bind(year)
-    .bind(month)
+    .bind(exclude_user_id)
+    .bind(effective_start)
+    .bind(&end_of_month)
     .fetch_all(&state.db)
     .await?;
 
-    Ok(Json(shifts))
+    // Group shifts by user
+    use std::collections::HashMap;
+    let mut user_map: HashMap<i32, UserWithSwappableShifts> = HashMap::new();
+
+    for row in rows {
+        let user_shifts = user_map.entry(row.user_id).or_insert_with(|| UserWithSwappableShifts {
+            user_id: row.user_id,
+            user_name: row.user_name.clone(),
+            shifts: Vec::new(),
+        });
+
+        // Only add shift if it exists (LEFT JOIN can return NULL shifts)
+        if let Some(uuid) = row.shift_uuid {
+            user_shifts.shifts.push(SwappableShift {
+                uuid: uuid.to_string(),
+                date: row.shift_date.unwrap().to_string(),
+                start_time: row.start_time.unwrap_or_default(),
+                end_time: row.end_time.unwrap_or_default(),
+                label: row.label.unwrap_or_default(),
+                is_time_off: row.time_off_id.is_some(),
+            });
+        }
+    }
+
+    let mut result: Vec<UserWithSwappableShifts> = user_map.into_values().collect();
+    result.sort_by(|a, b| a.user_name.cmp(&b.user_name));
+
+    Ok(Json(result))
 }
 
 /// POST /api/marketplace/requests - Create a new shift swap request

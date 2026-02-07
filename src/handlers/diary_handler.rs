@@ -44,7 +44,13 @@ pub async fn get_diary(
             let end_date = NaiveDate::parse_from_str(&end, "%Y-%m-%d")
                 .map_err(|e| crate::AppError::BadRequest(format!("Invalid end date: {}", e)))?;
             sqlx::query_as::<sqlx::Postgres, DiaryEntry>(
-                r#"SELECT * FROM "Diary" WHERE deleted = false AND role_id = $1 AND date >= $2 AND date <= $3 ORDER BY date"#
+                r#"
+                SELECT d.*, u.short_name
+                FROM "Diary" d
+                LEFT JOIN "Users" u ON d.user_profile_id = u.user_profile_id
+                WHERE d.role_id = $1 AND d.date >= $2 AND d.date <= $3
+                ORDER BY d.created_at DESC
+                "#
             )
             .bind(role_id)
             .bind(start_date)
@@ -54,7 +60,13 @@ pub async fn get_diary(
         }
         (Some(role_id), None, None) => {
             sqlx::query_as::<sqlx::Postgres, DiaryEntry>(
-                r#"SELECT * FROM "Diary" WHERE deleted = false AND role_id = $1 ORDER BY date"#
+                r#"
+                SELECT d.*, u.short_name
+                FROM "Diary" d
+                LEFT JOIN "Users" u ON d.user_profile_id = u.user_profile_id
+                WHERE d.role_id = $1
+                ORDER BY d.created_at DESC
+                "#
             )
             .bind(role_id)
             .fetch_all(&state.db)
@@ -62,7 +74,12 @@ pub async fn get_diary(
         }
         _ => {
             sqlx::query_as::<sqlx::Postgres, DiaryEntry>(
-                r#"SELECT * FROM "Diary" WHERE deleted = false ORDER BY date"#
+                r#"
+                SELECT d.*, u.short_name
+                FROM "Diary" d
+                LEFT JOIN "Users" u ON d.user_profile_id = u.user_profile_id
+                ORDER BY d.created_at DESC
+                "#
             )
             .fetch_all(&state.db)
             .await?

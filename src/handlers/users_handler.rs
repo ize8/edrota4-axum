@@ -1,7 +1,8 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json,
 };
+use serde::{Deserialize, Deserializer};
 use std::sync::Arc;
 
 use crate::{
@@ -16,22 +17,97 @@ use crate::{
     AppError, AppResult, AppState,
 };
 
+// Helper to deserialize string or number as i32
+fn deserialize_string_or_number<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrNumber {
+        String(String),
+        Number(i32),
+    }
+
+    match StringOrNumber::deserialize(deserializer)? {
+        StringOrNumber::String(s) => s.parse::<i32>().map_err(D::Error::custom),
+        StringOrNumber::Number(n) => Ok(n),
+    }
+}
+
 // ToSchema is used in auth_handler for VerifyPinRequest/Response
+
+#[derive(Deserialize)]
+pub struct GetUsersQuery {
+    hospital: Option<String>,
+    ward: Option<String>,
+    role_id: Option<i32>,
+}
 
 /// GET /api/users
 #[utoipa::path(
     get,
     path = "/api/users",
+    params(
+        ("hospital" = Option<String>, Query, description = "Filter by hospital name"),
+        ("ward" = Option<String>, Query, description = "Filter by ward name"),
+        ("role_id" = Option<i32>, Query, description = "Filter by role assignment")
+    ),
     responses(
-        (status = 200, description = "List of all users", body = Vec<User>)
+        (status = 200, description = "List of users (filtered if params provided)", body = Vec<User>)
     ),
     tag = "users"
 )]
-pub async fn get_users(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<User>>> {
+pub async fn get_users(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<GetUsersQuery>,
+) -> AppResult<Json<Vec<User>>> {
+    // Filter by role if role_id is provided
+    if let Some(role_id) = query.role_id {
+        let users = sqlx::query_as::<_, User>(
+            r#"
+            SELECT DISTINCT u.*
+            FROM "Users" u
+            INNER JOIN "UserRoles" ur ON u.user_profile_id = ur.user_profile_id
+            WHERE ur.role_id = $1
+            ORDER BY u.full_name
+            "#,
+        )
+        .bind(role_id)
+        .fetch_all(&state.db)
+        .await?;
+
+        return Ok(Json(users));
+    }
+
+    // Filter by workplace (hospital + ward)
+    if let (Some(hospital), Some(ward)) = (query.hospital, query.ward) {
+        let users = sqlx::query_as::<_, User>(
+            r#"
+            SELECT DISTINCT u.*
+            FROM "Users" u
+            INNER JOIN "UserRoles" ur ON u.user_profile_id = ur.user_profile_id
+            INNER JOIN "Roles" r ON ur.role_id = r.id
+            INNER JOIN "Workplaces" w ON r.workplace_id = w.id
+            WHERE w.hospital = $1 AND w.ward = $2
+            ORDER BY u.full_name
+            "#,
+        )
+        .bind(hospital)
+        .bind(ward)
+        .fetch_all(&state.db)
+        .await?;
+
+        return Ok(Json(users));
+    }
+
+    // No filters - return all users
     let users = sqlx::query_as::<_, User>(
         r#"
         SELECT * FROM "Users"
-        ORDER BY short_name
+        ORDER BY full_name
         "#,
     )
     .fetch_all(&state.db)
@@ -70,10 +146,22 @@ pub async fn get_user(
     Ok(Json(user))
 }
 
+#[derive(Deserialize)]
+pub struct SubstantiveUsersQuery {
+    role_id: Option<i32>, // Required but using Option for query param parsing
+    year: Option<i32>,
+    month: Option<i32>,
+}
+
 /// GET /api/users/substantive
 #[utoipa::path(
     get,
     path = "/api/users/substantive",
+    params(
+        ("role_id" = Option<i32>, Query, description = "Filter by role assignment"),
+        ("year" = Option<i32>, Query, description = "Filter by activity in year"),
+        ("month" = Option<i32>, Query, description = "Filter by activity in month (requires year)")
+    ),
     responses(
         (status = 200, description = "List of substantive (non-generic) users", body = Vec<User>)
     ),
@@ -81,24 +169,158 @@ pub async fn get_user(
 )]
 pub async fn get_substantive_users(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<SubstantiveUsersQuery>,
 ) -> AppResult<Json<Vec<User>>> {
-    let users = sqlx::query_as::<_, User>(
-        r#"
-        SELECT * FROM "Users"
-        WHERE is_generic_login = false
-        ORDER BY short_name
-        "#,
-    )
-    .fetch_all(&state.db)
-    .await?;
+    // Substantive users = users with JobPlans for this role
+    // This matches TanStack logic which queries JobPlans table
+
+    let role_id = query.role_id.ok_or_else(|| {
+        AppError::BadRequest("role_id is required for substantive users".into())
+    })?;
+
+    let users = if let (Some(year), Some(month)) = (query.year, query.month) {
+        // With date filter: job plan must be active during that month
+        let first_day_of_month = format!("{}-{:02}-01", year, month);
+
+        sqlx::query_as::<_, User>(
+            r#"
+            SELECT DISTINCT u.*
+            FROM "JobPlans" jp
+            INNER JOIN "Users" u ON jp.user_profile_id = u.user_profile_id
+            WHERE jp.role_id = $1
+              AND jp.from <= $2::DATE
+              AND (jp.until >= $2::DATE OR jp.until IS NULL)
+            ORDER BY u.user_profile_id
+            "#,
+        )
+        .bind(role_id)
+        .bind(&first_day_of_month)
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        // No date filter: all users with job plans for this role
+        sqlx::query_as::<_, User>(
+            r#"
+            SELECT DISTINCT u.*
+            FROM "JobPlans" jp
+            INNER JOIN "Users" u ON jp.user_profile_id = u.user_profile_id
+            WHERE jp.role_id = $1
+            ORDER BY u.user_profile_id
+            "#,
+        )
+        .bind(role_id)
+        .fetch_all(&state.db)
+        .await?
+    };
 
     Ok(Json(users))
+}
+
+#[derive(Deserialize, utoipa::ToSchema, Debug)]
+pub struct LocumUsersRequest {
+    #[serde(deserialize_with = "deserialize_string_or_number")]
+    role_id: i32,
+    #[serde(default)]
+    year: Option<i32>,
+    #[serde(default)]
+    month: Option<i32>,
+    #[serde(default)]
+    exclude_user_ids: Option<Vec<i32>>,
+}
+
+/// POST /api/users/locum
+#[utoipa::path(
+    post,
+    path = "/api/users/locum",
+    request_body = LocumUsersRequest,
+    responses(
+        (status = 200, description = "List of locum (generic login) users for role", body = Vec<User>)
+    ),
+    tag = "users"
+)]
+pub async fn get_locum_users(
+    State(state): State<Arc<AppState>>,
+    body: String,
+) -> AppResult<Json<Vec<User>>> {
+    tracing::info!("get_locum_users raw body: {}", body);
+
+    let req: LocumUsersRequest = serde_json::from_str(&body)
+        .map_err(|e| {
+            tracing::error!("Failed to parse LocumUsersRequest: {}", e);
+            AppError::BadRequest(format!("Invalid request body: {}", e))
+        })?;
+
+    tracing::debug!("get_locum_users parsed: {:?}", req);
+    // Locum users = users in UserRoles with can_work_shifts=true
+    // TanStack ignores year/month parameters (they're prefixed with _ in the code)
+    // Does NOT filter by is_generic_login!
+
+    let users = if let Some(ref exclude_ids) = req.exclude_user_ids {
+        if !exclude_ids.is_empty() {
+            // With exclusions
+            sqlx::query_as::<_, User>(
+                r#"
+                SELECT DISTINCT u.*
+                FROM "UserRoles" ur
+                INNER JOIN "Users" u ON ur.user_profile_id = u.user_profile_id
+                WHERE ur.role_id = $1
+                  AND ur.can_work_shifts = true
+                  AND u.user_profile_id != ALL($2)
+                ORDER BY u.user_profile_id
+                "#,
+            )
+            .bind(req.role_id)
+            .bind(exclude_ids)
+            .fetch_all(&state.db)
+            .await?
+        } else {
+            // Empty exclusion list = no exclusions
+            sqlx::query_as::<_, User>(
+                r#"
+                SELECT DISTINCT u.*
+                FROM "UserRoles" ur
+                INNER JOIN "Users" u ON ur.user_profile_id = u.user_profile_id
+                WHERE ur.role_id = $1
+                  AND ur.can_work_shifts = true
+                ORDER BY u.user_profile_id
+                "#,
+            )
+            .bind(req.role_id)
+            .fetch_all(&state.db)
+            .await?
+        }
+    } else {
+        // No exclusions specified
+        sqlx::query_as::<_, User>(
+            r#"
+            SELECT DISTINCT u.*
+            FROM "UserRoles" ur
+            INNER JOIN "Users" u ON ur.user_profile_id = u.user_profile_id
+            WHERE ur.role_id = $1
+              AND ur.can_work_shifts = true
+            ORDER BY u.user_profile_id
+            "#,
+        )
+        .bind(req.role_id)
+        .fetch_all(&state.db)
+        .await?
+    };
+
+    Ok(Json(users))
+}
+
+#[derive(Deserialize)]
+pub struct StaffListQuery {
+    role_id: Option<i32>,
 }
 
 /// GET /api/users/staff-list
 #[utoipa::path(
     get,
     path = "/api/users/staff-list",
+    params(
+        ("role_id" = Option<i32>, Query, description = "Filter by role assignment")
+    ),
     responses(
         (status = 200, description = "Staff list for filters", body = Vec<StaffFilterOption>)
     ),
@@ -106,21 +328,45 @@ pub async fn get_substantive_users(
 )]
 pub async fn get_staff_list(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<StaffListQuery>,
 ) -> AppResult<Json<Vec<StaffFilterOption>>> {
-    let staff = sqlx::query_as::<_, StaffFilterOption>(
-        r#"
-        SELECT
-            user_profile_id,
-            short_name,
-            full_name,
-            color
-        FROM "Users"
-        WHERE is_generic_login = false
-        ORDER BY short_name
-        "#,
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let staff = if let Some(role_id) = query.role_id {
+        // Filter by role and can_work_shifts
+        sqlx::query_as::<_, StaffFilterOption>(
+            r#"
+            SELECT DISTINCT
+                u.user_profile_id,
+                u.short_name,
+                u.full_name,
+                u.color
+            FROM "Users" u
+            INNER JOIN "UserRoles" ur ON u.user_profile_id = ur.user_profile_id
+            WHERE u.is_generic_login = false
+              AND ur.role_id = $1
+              AND ur.can_work_shifts = true
+            ORDER BY u.user_profile_id
+            "#,
+        )
+        .bind(role_id)
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        // No filter - all staff
+        sqlx::query_as::<_, StaffFilterOption>(
+            r#"
+            SELECT
+                user_profile_id,
+                short_name,
+                full_name,
+                color
+            FROM "Users"
+            WHERE is_generic_login = false
+            ORDER BY user_profile_id
+            "#,
+        )
+        .fetch_all(&state.db)
+        .await?
+    };
 
     Ok(Json(staff))
 }

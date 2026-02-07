@@ -34,9 +34,9 @@ fn serialize_naive_as_utc<S>(dt: &NaiveDateTime, serializer: S) -> Result<S::Ok,
 where
     S: serde::Serializer,
 {
-    use chrono::{DateTime, Utc};
+    use chrono::{DateTime, SecondsFormat, Utc};
     let utc_dt = DateTime::<Utc>::from_naive_utc_and_offset(*dt, Utc);
-    utc_dt.to_rfc3339().serialize(serializer)
+    utc_dt.to_rfc3339_opts(SecondsFormat::Millis, true).serialize(serializer)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]

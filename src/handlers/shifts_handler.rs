@@ -51,13 +51,16 @@ pub async fn get_shifts_for_month(
     State(state): State<Arc<AppState>>,
     Query(query): Query<GetShiftsQuery>,
 ) -> AppResult<Json<Vec<Shift>>> {
+    tracing::debug!("get_shifts_for_month called with year={:?}, month={:?}, role_id={:?}",
+        query.year, query.month, query.role_id);
+
     let mut sql = r#"
         SELECT
             uuid,
             role_id AS role,
             label,
-            to_char(start, 'HH24:MI') AS start,
-            to_char("end", 'HH24:MI') AS "end",
+            to_char(start, 'HH24:MI:SS') AS start,
+            to_char("end", 'HH24:MI:SS') AS "end",
             money_per_hour,
             pa_value,
             font_color,
@@ -127,8 +130,8 @@ pub async fn get_shifts_for_date(
             uuid,
             role_id AS role,
             label,
-            to_char(start, 'HH24:MI') AS start,
-            to_char("end", 'HH24:MI') AS "end",
+            to_char(start, 'HH24:MI:SS') AS start,
+            to_char("end", 'HH24:MI:SS') AS "end",
             money_per_hour,
             pa_value,
             font_color,
@@ -151,7 +154,7 @@ pub async fn get_shifts_for_date(
         sql.push_str(" AND role_id = $2");
     }
 
-    sql.push_str(" ORDER BY start");
+    sql.push_str(" ORDER BY start, role, label");
 
     let mut query_builder = sqlx::query_as::<_, Shift>(&sql).bind(date);
     if let Some(role_id) = query.role_id {
@@ -188,8 +191,8 @@ pub async fn get_shifts_for_range(
             uuid,
             role_id AS role,
             label,
-            to_char(start, 'HH24:MI') AS start,
-            to_char("end", 'HH24:MI') AS "end",
+            to_char(start, 'HH24:MI:SS') AS start,
+            to_char("end", 'HH24:MI:SS') AS "end",
             money_per_hour,
             pa_value,
             font_color,

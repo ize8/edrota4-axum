@@ -1,8 +1,10 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json,
 };
+use serde::Deserialize;
 use std::sync::Arc;
+use utoipa::IntoParams;
 
 use crate::{
     extractors::AuthenticatedUser,
@@ -10,41 +12,80 @@ use crate::{
     AppError, AppResult, AppState,
 };
 
-/// GET /api/roles
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct GetRolesQuery {
+    pub hospital: Option<String>,
+    pub ward: Option<String>,
+}
+
+/// GET /api/roles?hospital=&ward=
 #[utoipa::path(
     get,
     path = "/api/roles",
+    params(GetRolesQuery),
     responses(
-        (status = 200, description = "List of roles with joined workplace data", body = Vec<Role>)
+        (status = 200, description = "List of roles with joined workplace data (optionally filtered by workplace)", body = Vec<Role>)
     ),
     tag = "roles"
 )]
-pub async fn get_roles(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<Role>>> {
-    let rows = sqlx::query_as::<_, (i32, i32, String, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>)>(
-        r#"
+pub async fn get_roles(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<GetRolesQuery>,
+) -> AppResult<Json<Vec<Role>>> {
+    // Build base query
+    let mut sql = r#"
         SELECT
             r.id::int4,
             r.workplace_id::int4,
             r.role_name,
-            w.id::int4,
+            r.marketplace_auto_approve,
+            w.id::int8,
             w.hospital,
             w.ward,
             w.address,
             w.code
         FROM "Roles" r
         LEFT JOIN "Workplaces" w ON r.workplace_id = w.id
-        ORDER BY r.id
-        "#
-    )
-    .fetch_all(&state.db)
-    .await?;
+    "#.to_string();
+
+    let mut conditions = vec![];
+    let mut bind_values: Vec<String> = vec![];
+
+    // Add filters if provided
+    if let Some(hospital) = query.hospital {
+        conditions.push(format!("w.hospital = ${}", bind_values.len() + 1));
+        bind_values.push(hospital);
+    }
+
+    if let Some(ward) = query.ward {
+        conditions.push(format!("w.ward = ${}", bind_values.len() + 1));
+        bind_values.push(ward);
+    }
+
+    // Append WHERE clause if there are conditions
+    if !conditions.is_empty() {
+        sql.push_str(" WHERE ");
+        sql.push_str(&conditions.join(" AND "));
+    }
+
+    sql.push_str(" ORDER BY r.id");
+
+    // Build and execute query
+    let mut query_builder = sqlx::query_as::<_, (i32, i32, String, Option<bool>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<String>)>(&sql);
+
+    for value in bind_values {
+        query_builder = query_builder.bind(value);
+    }
+
+    let rows = query_builder.fetch_all(&state.db).await?;
 
     let result = rows
         .into_iter()
-        .map(|(id, workplace, role_name, w_id, w_hospital, w_ward, w_address, w_code)| Role {
+        .map(|(id, workplace, role_name, marketplace_auto_approve, w_id, w_hospital, w_ward, w_address, w_code)| Role {
             id,
             workplace,
             role_name,
+            marketplace_auto_approve,
             workplaces: w_id.map(|id| Workplace {
                 id,
                 hospital: w_hospital,
@@ -223,13 +264,14 @@ pub async fn delete_role(
 /// Helper function to check if user has a specific permission
 /// Helper function to fetch a role by ID with joined Workplace data
 async fn fetch_role_by_id(db: &sqlx::PgPool, role_id: i32) -> AppResult<Role> {
-    let row = sqlx::query_as::<_, (i32, i32, String, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>)>(
+    let row = sqlx::query_as::<_, (i32, i32, String, Option<bool>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<String>)>(
         r#"
         SELECT
             r.id::int4,
             r.workplace_id::int4,
             r.role_name,
-            w.id::int4,
+            r.marketplace_auto_approve,
+            w.id::int8,
             w.hospital,
             w.ward,
             w.address,
@@ -247,12 +289,13 @@ async fn fetch_role_by_id(db: &sqlx::PgPool, role_id: i32) -> AppResult<Role> {
         id: row.0,
         workplace: row.1,
         role_name: row.2,
-        workplaces: row.3.map(|id| Workplace {
+        marketplace_auto_approve: row.3,
+        workplaces: row.4.map(|id| Workplace {
             id,
-            hospital: row.4,
-            ward: row.5,
-            address: row.6,
-            code: row.7,
+            hospital: row.5,
+            ward: row.6,
+            address: row.7,
+            code: row.8,
         }),
     })
 }

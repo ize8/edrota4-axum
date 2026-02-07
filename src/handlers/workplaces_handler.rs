@@ -77,7 +77,7 @@ pub async fn create_workplace(
     put,
     path = "/api/workplaces/{id}",
     params(
-        ("id" = i32, Path, description = "Workplace ID")
+        ("id" = i64, Path, description = "Workplace ID")
     ),
     request_body = UpdateWorkplaceInput,
     responses(
@@ -91,7 +91,7 @@ pub async fn create_workplace(
 )]
 pub async fn update_workplace(
     State(state): State<Arc<AppState>>,
-    Path(workplace_id): Path<i32>,
+    Path(workplace_id): Path<i64>,
     auth: AuthenticatedUser,
     Json(input): Json<UpdateWorkplaceInput>,
 ) -> AppResult<Json<Workplace>> {
@@ -172,7 +172,7 @@ pub async fn update_workplace(
     delete,
     path = "/api/workplaces/{id}",
     params(
-        ("id" = i32, Path, description = "Workplace ID")
+        ("id" = i64, Path, description = "Workplace ID")
     ),
     responses(
         (status = 200, description = "Workplace deleted successfully", body = WorkplaceMutationResponse),
@@ -184,7 +184,7 @@ pub async fn update_workplace(
 )]
 pub async fn delete_workplace(
     State(state): State<Arc<AppState>>,
-    Path(workplace_id): Path<i32>,
+    Path(workplace_id): Path<i64>,
     auth: AuthenticatedUser,
 ) -> AppResult<Json<WorkplaceMutationResponse>> {
     // Check permission

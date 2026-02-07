@@ -54,7 +54,7 @@ pub async fn get_comments(
         bindings.push(role_id);
     }
 
-    sql.push_str(" ORDER BY date");
+    sql.push_str(" ORDER BY date, id");  // Match TanStack ordering
 
     let mut query_builder = sqlx::query_as::<_, COD>(&sql);
     for binding in bindings {

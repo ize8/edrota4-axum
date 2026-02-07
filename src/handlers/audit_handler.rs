@@ -63,21 +63,21 @@ pub async fn get_audit(
             sa.uuid,
             sa.role_id,
             sa.created_by,
-            u.short_name AS created_by_name,
+            COALESCE(u.short_name, 'Unknown') AS created_by_name,
             sa.old,
             sa.new,
-            COALESCE(u_old.full_name, '') AS old_staff_name,
-            COALESCE(u_new.full_name, '') AS new_staff_name,
-            COALESCE(toc_old.short_name, '') AS old_time_off_category,
-            COALESCE(toc_new.short_name, '') AS new_time_off_category,
-            sa.date,
+            u_old.short_name AS old_staff_name,
+            u_new.short_name AS new_staff_name,
+            toc_old.short_name AS old_time_off_category,
+            toc_new.short_name AS new_time_off_category,
+            COALESCE(sa.date::text, '') AS date,
             sa.created_at
         FROM "ShiftAudit" sa
         LEFT JOIN "Users" u ON sa.created_by = u.user_profile_id
         LEFT JOIN "Users" u_old ON (sa.old->>'user_profile_id')::int = u_old.user_profile_id
         LEFT JOIN "Users" u_new ON (sa.new->>'user_profile_id')::int = u_new.user_profile_id
-        LEFT JOIN "TimeOffCategories" toc_old ON (sa.old->>'time_off_category_id')::int = toc_old.id
-        LEFT JOIN "TimeOffCategories" toc_new ON (sa.new->>'time_off_category_id')::int = toc_new.id
+        LEFT JOIN "TimeOffCategories" toc_old ON (sa.old->>'time_off')::int = toc_old.id
+        LEFT JOIN "TimeOffCategories" toc_new ON (sa.new->>'time_off')::int = toc_new.id
         WHERE 1=1
     "#
     .to_string();

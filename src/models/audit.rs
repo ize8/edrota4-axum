@@ -13,11 +13,15 @@ pub struct AuditEntry {
     pub created_by_name: String,
     pub old: Option<Value>,
     pub new: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub old_staff_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub new_staff_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub old_time_off_category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub new_time_off_category: Option<String>,
-    pub date: Option<NaiveDate>,
+    pub date: String,
     #[serde(serialize_with = "serialize_naive_as_utc")]
     pub created_at: NaiveDateTime,
 }
@@ -25,6 +29,7 @@ fn serialize_naive_as_utc<S>(dt: &NaiveDateTime, serializer: S) -> Result<S::Ok,
 where
     S: serde::Serializer,
 {
+    use chrono::SecondsFormat;
     let utc_dt = DateTime::<Utc>::from_naive_utc_and_offset(*dt, Utc);
-    utc_dt.to_rfc3339().serialize(serializer)
+    utc_dt.to_rfc3339_opts(SecondsFormat::Millis, true).serialize(serializer)
 }

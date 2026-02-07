@@ -22,7 +22,7 @@ pub use diary::DiaryEntry;
 pub use diary_input::{CreateDiaryInput, DiaryMutationResponse};
 pub use job_plan::JobPlan;
 pub use job_plan_input::{CreateJobPlanInput, JobPlanMutationResponse, UpdateJobPlanInput};
-pub use marketplace::{ShiftRequest, ShiftRequestWithDetails};
+pub use marketplace::{ShiftRequest, ShiftRequestWithDetails, SwappableShift, UserWithSwappableShifts};
 pub use marketplace_input::{AcceptRequestInput, AdminDecisionInput, CreateShiftRequestInput, MarketplaceMutationResponse, RespondToProposalInput};
 pub use role::{Role, Workplace};
 pub use role_input::{CreateRoleInput, CreateWorkplaceInput, RoleMutationResponse, UpdateRoleInput, UpdateWorkplaceInput, WorkplaceMutationResponse};

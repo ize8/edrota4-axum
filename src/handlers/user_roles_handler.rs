@@ -34,7 +34,7 @@ struct UserRoleQueryRow {
     r_id: Option<i32>,
     r_workplace: Option<i32>,
     r_role_name: Option<String>,
-    w_id: Option<i32>,
+    w_id: Option<i64>,
     w_hospital: Option<String>,
     w_ward: Option<String>,
     w_address: Option<String>,
@@ -58,23 +58,38 @@ pub async fn get_user_roles(
     auth: AuthenticatedUser,
     Query(query): Query<GetUserRolesQuery>,
 ) -> AppResult<Json<Vec<UserRole>>> {
-    // Check permission
-    let has_perm = permissions::has_permission(
-        &state.db,
-        auth.profile_id,
-        auth.is_super_admin,
-        permissions::can_edit_staff,
-    )
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))?;
+    // Determine which user_profile_id to query for
+    let target_user_id = query.user_profile_id.unwrap_or(auth.profile_id);
 
-    if !has_perm {
-        return Err(AppError::Forbidden(
-            "Missing can_edit_staff permission".to_string(),
-        ));
+    // Permission check: users can view their own roles, but need can_edit_staff to view others
+    let is_viewing_self = target_user_id == auth.profile_id;
+
+    if !is_viewing_self {
+        let has_perm = permissions::has_permission(
+            &state.db,
+            auth.profile_id,
+            auth.is_super_admin,
+            permissions::can_edit_staff,
+        )
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        if !has_perm {
+            return Err(AppError::Forbidden(
+                "Missing can_edit_staff permission to view other users' roles".to_string(),
+            ));
+        }
     }
 
-    // Build query
+    // Check if target user is a super admin
+    let is_target_super_admin: bool = sqlx::query_scalar(
+        r#"SELECT is_super_admin FROM "Users" WHERE user_profile_id = $1"#
+    )
+    .bind(target_user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .unwrap_or(false);
+
     let query_str = r#"
         SELECT
             ur.id::int4,
@@ -90,7 +105,7 @@ pub async fn get_user_roles(
             r.id::int4 AS r_id,
             r.workplace_id::int4 AS r_workplace,
             r.role_name AS r_role_name,
-            w.id::int4 AS w_id,
+            w.id::int8 AS w_id,
             w.hospital AS w_hospital,
             w.ward AS w_ward,
             w.address AS w_address,
@@ -98,24 +113,18 @@ pub async fn get_user_roles(
         FROM "UserRoles" ur
         LEFT JOIN "Roles" r ON ur.role_id = r.id
         LEFT JOIN "Workplaces" w ON r.workplace_id = w.id
+        WHERE ur.user_profile_id = $1
+        ORDER BY ur.id
     "#;
 
-    let user_roles = if let Some(user_profile_id) = query.user_profile_id {
-        sqlx::query_as::<_, UserRoleQueryRow>(&format!(
-            "{} WHERE ur.user_profile_id = $1 ORDER BY ur.id",
-            query_str
-        ))
-        .bind(user_profile_id)
+    // Fetch actual UserRole records
+    let actual_user_roles = sqlx::query_as::<_, UserRoleQueryRow>(query_str)
+        .bind(target_user_id)
         .fetch_all(&state.db)
-        .await?
-    } else {
-        sqlx::query_as::<_, UserRoleQueryRow>(&format!("{} ORDER BY ur.id", query_str))
-            .fetch_all(&state.db)
-            .await?
-    };
+        .await?;
 
-    let result = user_roles
-        .into_iter()
+    let mut result: Vec<UserRole> = actual_user_roles
+        .iter()
         .map(|row| UserRole {
             id: row.id,
             role_id: row.role_id,
@@ -130,17 +139,105 @@ pub async fn get_user_roles(
             roles: row.r_id.map(|id| Role {
                 id,
                 workplace: row.r_workplace.unwrap_or(0),
-                role_name: row.r_role_name.unwrap_or_default(),
+                role_name: row.r_role_name.clone().unwrap_or_default(),
+                marketplace_auto_approve: None,  // Not fetched in UserRoles query
                 workplaces: row.w_id.map(|w_id| Workplace {
                     id: w_id,
-                    hospital: row.w_hospital,
-                    ward: row.w_ward,
-                    address: row.w_address,
-                    code: row.w_code,
+                    hospital: row.w_hospital.clone(),
+                    ward: row.w_ward.clone(),
+                    address: row.w_address.clone(),
+                    code: row.w_code.clone(),
                 }),
             }),
         })
         .collect();
+
+    // If target user is super admin, supplement with synthetic roles for missing roles
+    if is_target_super_admin {
+        tracing::info!(
+            "User {} is super admin, supplementing with synthetic roles",
+            target_user_id
+        );
+
+        // Get IDs of roles user already has
+        let existing_role_ids: std::collections::HashSet<i32> = actual_user_roles
+            .iter()
+            .map(|row| row.role_id)
+            .collect();
+
+        // Fetch all roles that user doesn't have
+        let all_roles = sqlx::query_as::<_, UserRoleQueryRow>(
+            r#"
+            SELECT
+                r.id::int4 AS id,
+                r.id::int4 AS role_id,
+                $1::int4 AS user_profile_id,
+                true AS can_edit_rota,
+                true AS can_access_diary,
+                true AS can_work_shifts,
+                true AS can_edit_templates,
+                true AS can_edit_staff,
+                true AS can_view_staff_details,
+                '1970-01-01 00:00:00'::timestamp AS created_at,
+                r.id::int4 AS r_id,
+                r.workplace_id::int4 AS r_workplace,
+                r.role_name AS r_role_name,
+                w.id::int8 AS w_id,
+                w.hospital AS w_hospital,
+                w.ward AS w_ward,
+                w.address AS w_address,
+                w.code AS w_code
+            FROM "Roles" r
+            LEFT JOIN "Workplaces" w ON r.workplace_id = w.id
+            ORDER BY r.id
+            "#,
+        )
+        .bind(target_user_id)
+        .fetch_all(&state.db)
+        .await?;
+
+        // Create synthetic UserRole objects for roles not already assigned
+        let synthetic_roles: Vec<UserRole> = all_roles
+            .iter()
+            .filter(|row| !existing_role_ids.contains(&row.role_id))
+            .map(|row| UserRole {
+                id: row.id,
+                role_id: row.role_id,
+                user_profile_id: row.user_profile_id,
+                can_edit_rota: true,
+                can_access_diary: true,
+                can_work_shifts: true,
+                can_edit_templates: true,
+                can_edit_staff: true,
+                can_view_staff_details: true,
+                created_at: row.created_at,
+                roles: row.r_id.map(|id| Role {
+                    id,
+                    workplace: row.r_workplace.unwrap_or(0),
+                    role_name: row.r_role_name.clone().unwrap_or_default(),
+                    marketplace_auto_approve: None,
+                    workplaces: row.w_id.map(|w_id| Workplace {
+                        id: w_id,
+                        hospital: row.w_hospital.clone(),
+                        ward: row.w_ward.clone(),
+                        address: row.w_address.clone(),
+                        code: row.w_code.clone(),
+                    }),
+                }),
+            })
+            .collect();
+
+        tracing::info!(
+            "Super admin {}: {} actual + {} synthetic = {} total roles",
+            target_user_id,
+            result.len(),
+            synthetic_roles.len(),
+            result.len() + synthetic_roles.len()
+        );
+
+        // Append synthetic roles (actual roles first, synthetic second)
+        result.extend(synthetic_roles);
+    }
 
     Ok(Json(result))
 }
@@ -376,7 +473,7 @@ async fn fetch_user_role_by_id(db: &sqlx::PgPool, user_role_id: i32) -> AppResul
             r.id::int4 AS r_id,
             r.workplace_id::int4 AS r_workplace,
             r.role_name AS r_role_name,
-            w.id::int4 AS w_id,
+            w.id::int8 AS w_id,
             w.hospital AS w_hospital,
             w.ward AS w_ward,
             w.address AS w_address,
@@ -406,6 +503,7 @@ async fn fetch_user_role_by_id(db: &sqlx::PgPool, user_role_id: i32) -> AppResul
             id,
             workplace: row.r_workplace.unwrap_or(0),
             role_name: row.r_role_name.unwrap_or_default(),
+            marketplace_auto_approve: None,
             workplaces: row.w_id.map(|w_id| Workplace {
                 id: w_id,
                 hospital: row.w_hospital,

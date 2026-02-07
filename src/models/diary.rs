@@ -17,11 +17,14 @@ pub struct DiaryEntry {
     pub user_profile_id: Option<i32>,
     pub created_by: i32,
     pub deleted: bool,
+    #[sqlx(default)]
+    pub short_name: Option<String>,  // From LEFT JOIN with Users table
 }
 fn serialize_naive_as_utc<S>(dt: &NaiveDateTime, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
+    use chrono::SecondsFormat;
     let utc_dt = DateTime::<Utc>::from_naive_utc_and_offset(*dt, Utc);
-    utc_dt.to_rfc3339().serialize(serializer)
+    utc_dt.to_rfc3339_opts(SecondsFormat::Millis, true).serialize(serializer)
 }

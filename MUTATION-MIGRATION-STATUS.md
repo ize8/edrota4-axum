@@ -207,4 +207,4 @@ All backend fixes and missing endpoints are implemented and compilation verified
 ## Commits
 
 **Commit 1:** `6454004` - Phase 1.1-1.3 (permissions, fields, validation)
-**Commit 2:** (pending) - Phase 1.4 (6 missing endpoints + routes)
+**Commit 2:** `26b5991` - Phase 1.4 (6 missing endpoints + routes)

@@ -27,6 +27,12 @@ pub struct GetMarketplaceQuery {
     pub year: Option<i32>,
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct CancelRequestQuery {
+    #[serde(rename = "confirmedRequesterId")]
+    pub confirmed_requester_id: Option<i32>,
+}
+
 #[derive(Debug, FromRow)]
 struct ShiftRequestRow {
     // ShiftRequest fields
@@ -170,7 +176,7 @@ pub async fn get_open_requests(
             .fetch_all(&state.db)
             .await
             .map_err(|e| {
-                tracing::error!(error = %e, role_id, "Failed to fetch open requests");
+                tracing::error!(error = %e, role_id, "❌ Failed to fetch open requests");
                 e
             })?
     } else {
@@ -179,12 +185,12 @@ pub async fn get_open_requests(
             .fetch_all(&state.db)
             .await
             .map_err(|e| {
-                tracing::error!(error = %e, "Failed to fetch open requests");
+                tracing::error!(error = %e, "❌ Failed to fetch open requests");
                 e
             })?
     };
 
-    tracing::debug!(count = rows.len(), "Fetched open shift requests");
+    tracing::debug!(count = rows.len(), "🔍 Fetched open shift requests");
     let requests = rows.into_iter().map(row_to_shift_request_with_details).collect();
     Ok(Json(requests))
 }
@@ -205,7 +211,7 @@ pub async fn get_my_requests(
     Query(query): Query<GetMarketplaceQuery>,
 ) -> AppResult<Json<Vec<ShiftRequestWithDetails>>> {
     let user_id = query.user_id.ok_or_else(|| {
-        tracing::warn!("get_my_requests called without userId");
+        tracing::warn!("⚠️ get_my_requests called without userId");
         AppError::BadRequest("userId required".to_string())
     })?;
 
@@ -219,11 +225,11 @@ pub async fn get_my_requests(
         .fetch_all(&state.db)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, user_id, "Failed to fetch user's shift requests");
+            tracing::error!(error = %e, user_id, "❌ Failed to fetch user's shift requests");
             e
         })?;
 
-    tracing::debug!(user_id, count = rows.len(), "Fetched user's shift requests");
+    tracing::debug!(user_id, count = rows.len(), "🔍 Fetched user's shift requests");
     let requests = rows.into_iter().map(row_to_shift_request_with_details).collect();
     Ok(Json(requests))
 }
@@ -244,7 +250,7 @@ pub async fn get_incoming_requests(
     Query(query): Query<GetMarketplaceQuery>,
 ) -> AppResult<Json<Vec<ShiftRequestWithDetails>>> {
     let user_id = query.user_id.ok_or_else(|| {
-        tracing::warn!("get_incoming_requests called without userId");
+        tracing::warn!("⚠️ get_incoming_requests called without userId");
         AppError::BadRequest("userId required".to_string())
     })?;
 
@@ -258,11 +264,11 @@ pub async fn get_incoming_requests(
         .fetch_all(&state.db)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, user_id, "Failed to fetch incoming requests");
+            tracing::error!(error = %e, user_id, "❌ Failed to fetch incoming requests");
             e
         })?;
 
-    tracing::debug!(user_id, count = rows.len(), "Fetched incoming shift requests");
+    tracing::debug!(user_id, count = rows.len(), "🔍 Fetched incoming shift requests");
     let requests = rows.into_iter().map(row_to_shift_request_with_details).collect();
     Ok(Json(requests))
 }
@@ -293,12 +299,12 @@ pub async fn get_approval_requests(
     )
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, profile_id = auth.profile_id, "Permission check failed");
+        tracing::error!(error = %e, profile_id = auth.profile_id, "❌ Permission check failed");
         AppError::Internal(format!("Permission check failed for user {}: {}", auth.profile_id, e))
     })?;
 
     if !has_perm {
-        tracing::warn!(profile_id = auth.profile_id, "User attempted to access approval requests without permission");
+        tracing::warn!(profile_id = auth.profile_id, "🔐 User attempted to access approval requests without permission");
         return Err(AppError::Forbidden("Missing can_edit_rota permission".to_string()));
     }
 
@@ -314,7 +320,7 @@ pub async fn get_approval_requests(
                 .fetch_all(&state.db)
                 .await
                 .map_err(|e| {
-                    tracing::error!(error = %e, role_id, "Failed to fetch approval requests");
+                    tracing::error!(error = %e, role_id, "❌ Failed to fetch approval requests");
                     e
                 })?
         } else {
@@ -324,7 +330,7 @@ pub async fn get_approval_requests(
                 .fetch_all(&state.db)
                 .await
                 .map_err(|e| {
-                    tracing::error!(error = %e, "Failed to fetch approval requests with roleId=0");
+                    tracing::error!(error = %e, "❌ Failed to fetch approval requests with roleId=0");
                     e
                 })?
         }
@@ -334,12 +340,12 @@ pub async fn get_approval_requests(
             .fetch_all(&state.db)
             .await
             .map_err(|e| {
-                tracing::error!(error = %e, "Failed to fetch approval requests");
+                tracing::error!(error = %e, "❌ Failed to fetch approval requests");
                 e
             })?
     };
 
-    tracing::debug!(profile_id = auth.profile_id, count = rows.len(), "Fetched approval requests");
+    tracing::debug!(profile_id = auth.profile_id, count = rows.len(), "🔍 Fetched approval requests");
     let requests = rows.into_iter().map(row_to_shift_request_with_details).collect();
     Ok(Json(requests))
 }
@@ -422,21 +428,34 @@ pub async fn get_swappable_shifts(
     let month = query.month.ok_or_else(|| AppError::BadRequest("month required".to_string()))?;
     let year = query.year.ok_or_else(|| AppError::BadRequest("year required".to_string()))?;
 
-    // Get today's date for filtering
-    let today = chrono::Local::now().date_naive().to_string();
+    // Validate month/year range
+    if month < 1 || month > 12 {
+        return Err(AppError::BadRequest(format!("Invalid month: {}", month)));
+    }
+    if year < 2000 || year > 2100 {
+        return Err(AppError::BadRequest(format!("Invalid year: {}", year)));
+    }
 
-    // Determine effective start date (later of: today or first of month)
-    let first_of_month = format!("{}-{:02}-01", year, month);
-    let effective_start = if first_of_month < today { &today } else { &first_of_month };
-
-    // Calculate last day of month
+    // Calculate date range using proper date types
     use chrono::Datelike;
+    let today = chrono::Local::now().date_naive();
+    let first_of_month = chrono::NaiveDate::from_ymd_opt(year, month as u32, 1)
+        .ok_or_else(|| AppError::BadRequest("Invalid date".to_string()))?;
+    let effective_start = today.max(first_of_month);
+
     let last_day = if month == 12 {
-        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1).unwrap().pred_opt().unwrap().day()
+        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+            .and_then(|d| d.pred_opt())
+            .map(|d| d.day())
+            .ok_or_else(|| AppError::BadRequest("Invalid date range".to_string()))?
     } else {
-        chrono::NaiveDate::from_ymd_opt(year, month as u32 + 1, 1).unwrap().pred_opt().unwrap().day()
+        chrono::NaiveDate::from_ymd_opt(year, month as u32 + 1, 1)
+            .and_then(|d| d.pred_opt())
+            .map(|d| d.day())
+            .ok_or_else(|| AppError::BadRequest("Invalid date range".to_string()))?
     };
-    let end_of_month = format!("{}-{:02}-{:02}", year, month, last_day);
+    let end_of_month = chrono::NaiveDate::from_ymd_opt(year, month as u32, last_day)
+        .ok_or_else(|| AppError::BadRequest("Invalid date range".to_string()))?;
 
     #[derive(FromRow)]
     struct ShiftRow {
@@ -464,8 +483,8 @@ pub async fn get_swappable_shifts(
         FROM "Users" u
         INNER JOIN "UserRoles" ur ON u.user_profile_id = ur.user_profile_id
         LEFT JOIN "Shifts" s ON s.user_profile_id = u.user_profile_id
-            AND s.date >= $3::DATE
-            AND s.date <= $4::DATE
+            AND s.date >= $3
+            AND s.date <= $4
         WHERE ur.role_id = $1
           AND u.user_profile_id != $2
         ORDER BY u.full_name, s.date
@@ -474,7 +493,7 @@ pub async fn get_swappable_shifts(
     .bind(role_id)
     .bind(exclude_user_id)
     .bind(effective_start)
-    .bind(&end_of_month)
+    .bind(end_of_month)
     .fetch_all(&state.db)
     .await?;
 
@@ -493,7 +512,7 @@ pub async fn get_swappable_shifts(
         if let Some(uuid) = row.shift_uuid {
             user_shifts.shifts.push(SwappableShift {
                 uuid: uuid.to_string(),
-                date: row.shift_date.unwrap().to_string(),
+                date: row.shift_date.map(|d| d.to_string()).unwrap_or_default(),
                 start_time: row.start_time.unwrap_or_default(),
                 end_time: row.end_time.unwrap_or_default(),
                 label: row.label.unwrap_or_default(),
@@ -527,6 +546,9 @@ pub async fn create_shift_request(
     auth: AuthenticatedUser,
     Json(input): Json<CreateShiftRequestInput>,
 ) -> AppResult<Json<ShiftRequestWithDetails>> {
+    // Use confirmed requester ID if provided (generic account flow), otherwise use authenticated user
+    let acting_user_id = input.confirmed_requester_id.unwrap_or(auth.profile_id);
+
     // Verify the shift exists and belongs to the requester
     let shift: (Option<i32>,) = sqlx::query_as(
         r#"SELECT user_profile_id FROM "Shifts" WHERE uuid = $1"#
@@ -536,7 +558,7 @@ pub async fn create_shift_request(
     .await?
     .ok_or_else(|| AppError::NotFound(format!("Shift {} not found", input.shift_id)))?;
 
-    if shift.0 != Some(auth.profile_id) {
+    if shift.0 != Some(acting_user_id) {
         return Err(AppError::Forbidden("You can only create requests for your own shifts".to_string()));
     }
 
@@ -560,7 +582,7 @@ pub async fn create_shift_request(
         "#,
     )
     .bind(input.shift_id)
-    .bind(auth.profile_id)
+    .bind(acting_user_id)
     .bind(&input.request_type)
     .bind(status)
     .bind(input.target_user_id)
@@ -597,6 +619,9 @@ pub async fn accept_shift_request(
     auth: AuthenticatedUser,
     Json(input): Json<AcceptRequestInput>,
 ) -> AppResult<Json<ShiftRequestWithDetails>> {
+    // Use confirmed candidate ID if provided (generic account flow), otherwise use authenticated user
+    let acting_user_id = input.confirmed_candidate_id.unwrap_or(auth.profile_id);
+
     // Fetch the current request
     let (current_status, requester_id, shift_id): (String, i32, Uuid) = sqlx::query_as(
         r#"SELECT status, requester_id, shift_id FROM "ShiftRequests" WHERE id = $1"#
@@ -612,7 +637,7 @@ pub async fn accept_shift_request(
     }
 
     // Requester cannot accept their own request
-    if requester_id == auth.profile_id {
+    if requester_id == acting_user_id {
         return Err(AppError::BadRequest("Cannot accept your own request".to_string()));
     }
 
@@ -643,7 +668,7 @@ pub async fn accept_shift_request(
         WHERE id = $4
         "#
     )
-    .bind(auth.profile_id)
+    .bind(acting_user_id)
     .bind(input.target_shift_id)
     .bind(new_status)
     .bind(request_id)
@@ -655,22 +680,22 @@ pub async fn accept_shift_request(
         tracing::info!(
             request_id,
             shift_id = %shift_id,
-            candidate_id = auth.profile_id,
-            "Auto-approving shift request and performing swap"
+            candidate_id = acting_user_id,
+            "✅🔄 Auto-approving shift request and performing swap"
         );
-        perform_shift_swap(&mut tx, shift_id, auth.profile_id, input.target_shift_id, requester_id).await?;
+        perform_shift_swap(&mut tx, shift_id, acting_user_id, input.target_shift_id, requester_id).await?;
 
         // Mark as resolved
         sqlx::query(r#"UPDATE "ShiftRequests" SET resolved_by = $1, resolved_at = NOW() WHERE id = $2"#)
-            .bind(auth.profile_id)
+            .bind(acting_user_id)
             .bind(request_id)
             .execute(&mut *tx)
             .await?;
     } else {
         tracing::info!(
             request_id,
-            candidate_id = auth.profile_id,
-            "Request accepted, pending admin approval"
+            candidate_id = acting_user_id,
+            "📝 Request accepted, pending admin approval"
         );
     }
 
@@ -679,12 +704,12 @@ pub async fn accept_shift_request(
             error = %e,
             request_id,
             auto_approve,
-            "Transaction rollback in accept_shift_request"
+            "❌ Transaction rollback in accept_shift_request"
         );
         AppError::Internal(format!("Failed to commit shift request acceptance for request {}: {}", request_id, e))
     })?;
 
-    tracing::debug!(request_id, "Shift request transaction committed successfully");
+    tracing::debug!(request_id, "✅ Shift request transaction committed successfully");
 
     // Fetch updated request
     let request = fetch_shift_request_with_details(&state.db, request_id).await?;
@@ -715,6 +740,9 @@ pub async fn respond_to_proposal(
     auth: AuthenticatedUser,
     Json(input): Json<RespondToProposalInput>,
 ) -> AppResult<Json<ShiftRequestWithDetails>> {
+    // Use confirmed responder ID if provided (generic account flow), otherwise use authenticated user
+    let acting_user_id = input.confirmed_responder_id.unwrap_or(auth.profile_id);
+
     // Fetch the current request
     let (current_status, target_user_id, requester_id, shift_id, target_shift_id): (String, Option<i32>, i32, Uuid, Option<Uuid>) = sqlx::query_as(
         r#"SELECT status, target_user_id, requester_id, shift_id, target_shift_id FROM "ShiftRequests" WHERE id = $1"#
@@ -730,7 +758,7 @@ pub async fn respond_to_proposal(
     }
 
     // Validate user is the target
-    if target_user_id != Some(auth.profile_id) {
+    if target_user_id != Some(acting_user_id) {
         return Err(AppError::Forbidden("You are not the target of this proposal".to_string()));
     }
 
@@ -761,7 +789,7 @@ pub async fn respond_to_proposal(
             WHERE id = $3
             "#
         )
-        .bind(auth.profile_id)
+        .bind(acting_user_id)
         .bind(new_status)
         .bind(request_id)
         .execute(&mut *tx)
@@ -772,22 +800,22 @@ pub async fn respond_to_proposal(
             tracing::info!(
                 request_id,
                 shift_id = %shift_id,
-                target_user_id = auth.profile_id,
-                "Target user accepted proposal, auto-approving swap"
+                target_user_id = acting_user_id,
+                "✅🔄 Target user accepted proposal, auto-approving swap"
             );
-            perform_shift_swap(&mut tx, shift_id, auth.profile_id, target_shift_id, requester_id).await?;
+            perform_shift_swap(&mut tx, shift_id, acting_user_id, target_shift_id, requester_id).await?;
 
             // Mark as resolved
             sqlx::query(r#"UPDATE "ShiftRequests" SET resolved_by = $1, resolved_at = NOW() WHERE id = $2"#)
-                .bind(auth.profile_id)
+                .bind(acting_user_id)
                 .bind(request_id)
                 .execute(&mut *tx)
                 .await?;
         } else {
             tracing::info!(
                 request_id,
-                target_user_id = auth.profile_id,
-                "Target user accepted proposal, pending admin approval"
+                target_user_id = acting_user_id,
+                "📝 Target user accepted proposal, pending admin approval"
             );
         }
 
@@ -796,15 +824,15 @@ pub async fn respond_to_proposal(
                 error = %e,
                 request_id,
                 auto_approve,
-                "Transaction rollback in respond_to_proposal (accept)"
+                "❌ Transaction rollback in respond_to_proposal (accept)"
             );
             AppError::Internal(format!("Failed to commit proposal response for request {}: {}", request_id, e))
         })?;
     } else {
         tracing::info!(
             request_id,
-            target_user_id = auth.profile_id,
-            "Target user rejected proposal"
+            target_user_id = acting_user_id,
+            "❌ Target user rejected proposal"
         );
 
         // Rejected by target user
@@ -815,7 +843,7 @@ pub async fn respond_to_proposal(
             WHERE id = $2
             "#
         )
-        .bind(auth.profile_id)
+        .bind(acting_user_id)
         .bind(request_id)
         .execute(&state.db)
         .await
@@ -823,8 +851,8 @@ pub async fn respond_to_proposal(
             tracing::error!(
                 error = %e,
                 request_id,
-                target_user_id = auth.profile_id,
-                "Failed to reject proposal"
+                target_user_id = acting_user_id,
+                "❌ Failed to reject proposal"
             );
             e
         })?;
@@ -886,7 +914,7 @@ pub async fn admin_decision(
             shift_id = %shift_id,
             candidate_id,
             admin_id = auth.profile_id,
-            "Admin approving shift request"
+            "✅ Admin approving shift request"
         );
 
         // Start transaction
@@ -914,17 +942,17 @@ pub async fn admin_decision(
                 error = %e,
                 request_id,
                 admin_id = auth.profile_id,
-                "Transaction rollback in admin_decision (approve)"
+                "❌ Transaction rollback in admin_decision (approve)"
             );
             AppError::Internal(format!("Failed to commit admin approval for request {}: {}", request_id, e))
         })?;
 
-        tracing::info!(request_id, "Admin approval transaction committed successfully");
+        tracing::info!(request_id, "✅ Admin approval transaction committed successfully");
     } else {
         tracing::info!(
             request_id,
             admin_id = auth.profile_id,
-            "Admin rejecting shift request"
+            "❌ Admin rejecting shift request"
         );
 
         // Rejected by admin
@@ -945,12 +973,12 @@ pub async fn admin_decision(
                 error = %e,
                 request_id,
                 admin_id = auth.profile_id,
-                "Failed to reject shift request"
+                "❌ Failed to reject shift request"
             );
             e
         })?;
 
-        tracing::info!(request_id, "Shift request rejected successfully");
+        tracing::info!(request_id, "✅ Shift request rejected successfully");
     }
 
     // Fetch updated request
@@ -964,7 +992,8 @@ pub async fn admin_decision(
     delete,
     path = "/api/marketplace/requests/{id}",
     params(
-        ("id" = i32, Path, description = "Shift request ID")
+        ("id" = i32, Path, description = "Shift request ID"),
+        ("confirmedRequesterId" = Option<i32>, Query, description = "For generic accounts - PIN-verified user ID")
     ),
     responses(
         (status = 200, description = "Request cancelled successfully", body = MarketplaceMutationResponse),
@@ -978,8 +1007,12 @@ pub async fn admin_decision(
 pub async fn cancel_shift_request(
     State(state): State<Arc<AppState>>,
     Path(request_id): Path<i32>,
+    Query(params): Query<CancelRequestQuery>,
     auth: AuthenticatedUser,
 ) -> AppResult<Json<MarketplaceMutationResponse>> {
+    // Use confirmed requester ID if provided (generic account flow), otherwise use authenticated user
+    let acting_user_id = params.confirmed_requester_id.unwrap_or(auth.profile_id);
+
     // Fetch the current request
     let (current_status, requester_id): (String, i32) = sqlx::query_as(
         r#"SELECT status, requester_id FROM "ShiftRequests" WHERE id = $1"#
@@ -989,8 +1022,8 @@ pub async fn cancel_shift_request(
     .await?
     .ok_or_else(|| AppError::NotFound(format!("Request {} not found", request_id)))?;
 
-    // Only requester can cancel
-    if requester_id != auth.profile_id {
+    // Only requester can cancel (compare with acting user, not auth user)
+    if requester_id != acting_user_id {
         return Err(AppError::Forbidden("You can only cancel your own requests".to_string()));
     }
 
@@ -1007,7 +1040,7 @@ pub async fn cancel_shift_request(
         WHERE id = $2
         "#
     )
-    .bind(auth.profile_id)
+    .bind(acting_user_id)
     .bind(request_id)
     .execute(&state.db)
     .await?;
@@ -1033,8 +1066,31 @@ async fn perform_shift_swap(
         .execute(&mut **tx)
         .await?;
 
-    // If there's a target shift (for swaps), assign it to the original owner
+    // If there's a target shift (for swaps), verify ownership and assign to original owner
     if let Some(target_shift_id) = target_shift_id {
+        let target_owner: Option<(Option<i32>,)> = sqlx::query_as(
+            r#"SELECT user_profile_id FROM "Shifts" WHERE uuid = $1"#
+        )
+        .bind(target_shift_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        match target_owner {
+            None => {
+                return Err(AppError::NotFound(format!("🔍 Target shift {} not found", target_shift_id)));
+            }
+            Some((owner,)) if owner != Some(new_owner_id) => {
+                tracing::warn!(
+                    target_shift = %target_shift_id,
+                    expected_owner = new_owner_id,
+                    actual_owner = ?owner,
+                    "⚠️ Target shift ownership mismatch"
+                );
+                return Err(AppError::BadRequest("Target shift does not belong to the expected user".to_string()));
+            }
+            _ => {}
+        }
+
         sqlx::query(r#"UPDATE "Shifts" SET user_profile_id = $1 WHERE uuid = $2"#)
             .bind(original_owner_id)
             .bind(target_shift_id)

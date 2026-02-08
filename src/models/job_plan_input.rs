@@ -6,7 +6,7 @@ use utoipa::ToSchema;
 /// Input for creating a job plan
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateJobPlanInput {
-    pub user_role: i32,
+    pub role_id: i32,  // Database column is role_id, not user_role
     pub user_profile_id: i32,
     pub dcc_pa: Option<f32>,
     pub dcc_hour: Option<f32>,
@@ -23,7 +23,7 @@ pub struct CreateJobPlanInput {
 /// Input for updating a job plan
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UpdateJobPlanInput {
-    pub user_role: Option<i32>,
+    pub role_id: Option<i32>,  // Database column is role_id, not user_role
     pub user_profile_id: Option<i32>,
     pub dcc_pa: Option<f32>,
     pub dcc_hour: Option<f32>,

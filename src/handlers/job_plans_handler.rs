@@ -55,7 +55,7 @@ pub async fn get_job_plans(
     let mut sql = r#"
         SELECT
             id,
-            role_id AS user_role,
+            role_id,
             user_profile_id,
             dcc_pa,
             dcc_hour,
@@ -128,8 +128,8 @@ pub async fn create_job_plan(
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING
-            id,
-            role_id AS user_role,
+            id::int4,
+            role_id,
             user_profile_id,
             dcc_pa,
             dcc_hour,
@@ -143,7 +143,7 @@ pub async fn create_job_plan(
             comment
         "#,
     )
-    .bind(input.user_role)
+    .bind(input.role_id)
     .bind(input.user_profile_id)
     .bind(input.dcc_pa)
     .bind(input.dcc_hour)
@@ -195,7 +195,7 @@ pub async fn update_job_plan(
     let mut updates = vec![];
     let mut bind_count = 1;
 
-    if input.user_role.is_some() {
+    if input.role_id.is_some() {
         updates.push(format!("role_id = ${}", bind_count));
         bind_count += 1;
     }
@@ -254,8 +254,8 @@ pub async fn update_job_plan(
         SET {}
         WHERE id = ${}
         RETURNING
-            id,
-            role_id AS user_role,
+            id::int4,
+            role_id,
             user_profile_id,
             dcc_pa,
             dcc_hour,
@@ -275,7 +275,7 @@ pub async fn update_job_plan(
     // Build query with bindings
     let mut query = sqlx::query_as::<_, JobPlan>(&sql);
 
-    if let Some(user_role) = input.user_role {
+    if let Some(user_role) = input.role_id {
         query = query.bind(user_role);
     }
     if let Some(user_profile_id) = input.user_profile_id {
@@ -400,8 +400,8 @@ pub async fn terminate_job_plan(
         SET until = $1
         WHERE id = $2
         RETURNING
-            id,
-            role_id AS user_role,
+            id::int4,
+            role_id,
             user_profile_id,
             dcc_pa,
             dcc_hour,

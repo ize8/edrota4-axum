@@ -4,7 +4,7 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Workplace {
-    pub id: i64,
+    pub id: i32,  // SERIAL = INT4, not INT8
     pub hospital: Option<String>,
     pub ward: Option<String>,
     pub address: Option<String>,

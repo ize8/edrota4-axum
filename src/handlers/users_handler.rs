@@ -241,17 +241,9 @@ pub struct LocumUsersRequest {
 )]
 pub async fn get_locum_users(
     State(state): State<Arc<AppState>>,
-    body: String,
+    Json(req): Json<LocumUsersRequest>,
 ) -> AppResult<Json<Vec<User>>> {
-    tracing::info!("get_locum_users raw body: {}", body);
-
-    let req: LocumUsersRequest = serde_json::from_str(&body)
-        .map_err(|e| {
-            tracing::error!("Failed to parse LocumUsersRequest: {}", e);
-            AppError::BadRequest(format!("Invalid request body: {}", e))
-        })?;
-
-    tracing::debug!("get_locum_users parsed: {:?}", req);
+    tracing::debug!("🐛 get_locum_users: {:?}", req);
     // Locum users = users in UserRoles with can_work_shifts=true
     // TanStack ignores year/month parameters (they're prefixed with _ in the code)
     // Does NOT filter by is_generic_login!
@@ -752,7 +744,7 @@ pub async fn search_users(
         query = %req.query,
         role_id = ?req.role_id,
         results_count = users.len(),
-        "User search completed"
+        "🔍 User search completed"
     );
 
     Ok(Json(users))
@@ -839,7 +831,7 @@ pub async fn create_user_profile(
         user_profile_id = user.user_profile_id,
         full_name = %req.full_name,
         created_by = auth.profile_id,
-        "User profile created without Clerk account"
+        "✨ User profile created without Clerk account"
     );
 
     Ok(Json(user))
@@ -900,7 +892,7 @@ pub async fn check_email_usage(
         email = %req.email,
         used_for_login,
         used_by_profile,
-        "Email availability check completed"
+        "📧 Email availability check completed"
     );
 
     Ok(Json(CheckEmailResponse {
@@ -968,7 +960,7 @@ pub async fn verify_profile_identity(
         tracing::warn!(
             user_profile_id = req.user_profile_id,
             attempted_by = auth.profile_id,
-            "Incorrect PIN attempt"
+            "🔑❌ Incorrect PIN attempt"
         );
         return Err(AppError::Unauthorized(
             "Incorrect PIN for selected user".to_string(),
@@ -981,7 +973,7 @@ pub async fn verify_profile_identity(
     tracing::info!(
         user_profile_id = req.user_profile_id,
         verified_by = auth.profile_id,
-        "Identity verified, token issued"
+        "🔐✅ Identity verified, token issued"
     );
 
     Ok(Json(VerifyIdentityResponse {
@@ -1047,7 +1039,7 @@ pub async fn change_profile_pin(
 
     tracing::info!(
         user_profile_id,
-        "Profile PIN changed successfully via token"
+        "🔑📝 Profile PIN changed successfully via token"
     );
 
     Ok(Json(SuccessResponse { success: true }))
@@ -1117,7 +1109,7 @@ pub async fn create_login(
         user_profile_id = req.user_profile_id,
         email = %req.email,
         is_generic = req.is_generic_login,
-        "Creating Clerk account"
+        "✨ Creating Clerk account"
     );
 
     let response = client
@@ -1128,14 +1120,14 @@ pub async fn create_login(
         .send()
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "Failed to call Clerk API");
+            tracing::error!(error = %e, "❌ Failed to call Clerk API");
             AppError::Internal(format!("Failed to create Clerk user: {}", e))
         })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        tracing::error!(status = %status, body, "Clerk API returned error");
+        tracing::error!(status = %status, body, "❌ Clerk API returned error");
         return Err(AppError::Internal(format!(
             "Clerk API error: {} - {}",
             status, body
@@ -1143,7 +1135,7 @@ pub async fn create_login(
     }
 
     let clerk_user: serde_json::Value = response.json().await.map_err(|e| {
-        tracing::error!(error = %e, "Failed to parse Clerk response");
+        tracing::error!(error = %e, "❌ Failed to parse Clerk response");
         AppError::Internal(format!("Failed to parse Clerk response: {}", e))
     })?;
 
@@ -1173,7 +1165,7 @@ pub async fn create_login(
     tracing::info!(
         user_profile_id = req.user_profile_id,
         auth_id = %auth_id,
-        "Clerk account created and linked successfully"
+        "✅ Clerk account created and linked successfully"
     );
 
     Ok(Json(CreateLoginResponse {
@@ -1231,7 +1223,7 @@ pub async fn change_own_password(
 
     tracing::info!(
         user_profile_id = auth.profile_id,
-        "Verifying current password with Clerk"
+        "🔐 Verifying current password with Clerk"
     );
 
     let verify_response = client
@@ -1248,7 +1240,7 @@ pub async fn change_own_password(
         .send()
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "Failed to verify password with Clerk");
+            tracing::error!(error = %e, "❌ Failed to verify password with Clerk");
             AppError::Internal(format!("Failed to verify password: {}", e))
         })?;
 
@@ -1262,7 +1254,7 @@ pub async fn change_own_password(
             ));
         }
         let body = verify_response.text().await.unwrap_or_default();
-        tracing::error!(status = %status, body, "Clerk password verification failed");
+        tracing::error!(status = %status, body, "❌ Clerk password verification failed");
         return Err(AppError::Internal(format!(
             "Password verification failed: {} - {}",
             status, body
@@ -1276,7 +1268,7 @@ pub async fn change_own_password(
 
     tracing::info!(
         user_profile_id = auth.profile_id,
-        "Updating password with Clerk"
+        "🔑 Updating password with Clerk"
     );
 
     let update_response = client
@@ -1293,14 +1285,14 @@ pub async fn change_own_password(
         .send()
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "Failed to update password with Clerk");
+            tracing::error!(error = %e, "❌ Failed to update password with Clerk");
             AppError::Internal(format!("Failed to update password: {}", e))
         })?;
 
     if !update_response.status().is_success() {
         let status = update_response.status();
         let body = update_response.text().await.unwrap_or_default();
-        tracing::error!(status = %status, body, "Clerk password update failed");
+        tracing::error!(status = %status, body, "❌ Clerk password update failed");
         return Err(AppError::Internal(format!(
             "Password update failed: {} - {}",
             status, body
@@ -1309,7 +1301,7 @@ pub async fn change_own_password(
 
     tracing::info!(
         user_profile_id = auth.profile_id,
-        "Password changed successfully"
+        "🔑✅ Password changed successfully"
     );
 
     Ok(Json(SuccessResponse { success: true }))

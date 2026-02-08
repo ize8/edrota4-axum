@@ -20,6 +20,7 @@ pub struct CreateShiftInput {
     pub date: NaiveDate,
     pub is_dcc: bool,
     pub is_spa: bool,
+    #[serde(rename = "time_off_category")]  // Frontend sends time_off_category
     pub time_off: Option<i32>,
     pub user_profile_id: Option<i32>,
     pub created_by: Option<i32>, // Optional - will default to authenticated user
@@ -41,6 +42,7 @@ pub struct UpdateShiftInput {
     pub date: Option<NaiveDate>,
     pub is_dcc: Option<bool>,
     pub is_spa: Option<bool>,
+    #[serde(rename = "time_off_category")]  // Frontend sends time_off_category
     pub time_off: Option<i32>,
     pub user_profile_id: Option<i32>,
 }

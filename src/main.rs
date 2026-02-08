@@ -25,6 +25,7 @@ pub struct AppState {
     pub db: sqlx::PgPool,
     pub jwks_cache: Arc<JwksCache>,
     pub user_cache: Cache<String, String>, // clerk_user_id → email
+    pub profile_cache: Cache<String, (i32, bool, String)>, // clerk_user_id → (profile_id, is_super_admin, email)
     pub config: AppConfig,
     pub metrics: Arc<MetricsState>,
 }
@@ -57,21 +58,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load configuration
     let config = AppConfig::from_env().map_err(|e| {
-        tracing::error!("Configuration error: {}", e);
+        tracing::error!("❌ Configuration error: {}", e);
         e
     })?;
 
     // Create database pool
     let db = db::create_pool(&config.database_url).await.map_err(|e| {
-        tracing::error!("Failed to create database pool: {}", e);
+        tracing::error!("❌ Failed to create database pool: {}", e);
         e
     })?;
 
-    tracing::info!("Database pool created successfully");
+    tracing::info!("✅ Database pool created successfully");
 
     // Initialize metrics recorder
     let metrics_state = Arc::new(handlers::setup_metrics_recorder());
-    tracing::info!("Metrics recorder initialized");
+    tracing::info!("✅ Metrics recorder initialized");
 
     // Create JWKS cache
     let jwks_cache = Arc::new(JwksCache::new(&config.clerk_domain));
@@ -82,11 +83,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .max_capacity(10_000)
         .build();
 
+    // Create profile cache (clerk_user_id → profile data) with 60-second TTL
+    let profile_cache = Cache::builder()
+        .time_to_live(Duration::from_secs(60))
+        .max_capacity(10_000)
+        .build();
+
     // Create application state
     let state = Arc::new(AppState {
         db,
         jwks_cache,
         user_cache,
+        profile_cache,
         config,
         metrics: metrics_state,
     });
@@ -96,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start server
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
-    tracing::info!("Server listening on {}", listener.local_addr()?);
+    tracing::info!("🚀 Server listening on {}", listener.local_addr()?);
 
     axum::serve(listener, app).await?;
 

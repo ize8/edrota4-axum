@@ -260,8 +260,13 @@ pub async fn create_shift(
     let shift_uuid = Uuid::new_v4();
 
     // Convert time strings to TIME format for database
-    let start_time = input.start.as_ref().map(|s| format!("{}:00", s));
-    let end_time = input.end.as_ref().map(|s| format!("{}:00", s));
+    // Handle both HH:MM and HH:MM:SS formats
+    let start_time = input.start.as_ref().map(|s| {
+        if s.len() == 5 { format!("{}:00", s) } else { s.clone() }
+    });
+    let end_time = input.end.as_ref().map(|s| {
+        if s.len() == 5 { format!("{}:00", s) } else { s.clone() }
+    });
 
     // Insert shift
     let shift = sqlx::query_as::<_, Shift>(
@@ -277,8 +282,8 @@ pub async fn create_shift(
             uuid,
             role_id AS role,
             label,
-            to_char(start, 'HH24:MI') AS start,
-            to_char("end", 'HH24:MI') AS "end",
+            to_char(start, 'HH24:MI:SS') AS start,
+            to_char("end", 'HH24:MI:SS') AS "end",
             money_per_hour,
             pa_value,
             font_color,
@@ -310,7 +315,7 @@ pub async fn create_shift(
     .bind(input.is_spa)
     .bind(input.time_off)
     .bind(input.user_profile_id)
-    .bind(input.created_by.unwrap())
+    .bind(input.created_by.unwrap_or(auth.profile_id))
     .fetch_one(&state.db)
     .await?;
 
@@ -426,8 +431,8 @@ pub async fn update_shift(
             uuid,
             role_id AS role,
             label,
-            to_char(start, 'HH24:MI') AS start,
-            to_char("end", 'HH24:MI') AS "end",
+            to_char(start, 'HH24:MI:SS') AS start,
+            to_char("end", 'HH24:MI:SS') AS "end",
             money_per_hour,
             pa_value,
             font_color,
@@ -456,10 +461,14 @@ pub async fn update_shift(
         query = query.bind(label);
     }
     if let Some(start) = &input.start {
-        query = query.bind(format!("{}:00", start));
+        // Handle both HH:MM and HH:MM:SS formats
+        let time_str = if start.len() == 5 { format!("{}:00", start) } else { start.clone() };
+        query = query.bind(time_str);
     }
     if let Some(end) = &input.end {
-        query = query.bind(format!("{}:00", end));
+        // Handle both HH:MM and HH:MM:SS formats
+        let time_str = if end.len() == 5 { format!("{}:00", end) } else { end.clone() };
+        query = query.bind(time_str);
     }
     if let Some(money) = input.money_per_hour {
         query = query.bind(money);

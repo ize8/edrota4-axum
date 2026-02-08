@@ -1,4 +1,31 @@
-use sqlx;
+use moka::future::Cache;
+use once_cell::sync::Lazy;
+use std::time::Duration;
+
+// Cache UserRoleRows per profile_id (30-second TTL)
+static ROLES_CACHE: Lazy<Cache<i32, Vec<UserRoleRow>>> = Lazy::new(|| {
+    Cache::builder()
+        .time_to_live(Duration::from_secs(30))
+        .max_capacity(1_000)
+        .build()
+});
+
+/// Fetch user roles with caching
+async fn get_cached_roles(db: &sqlx::PgPool, profile_id: i32) -> Result<Vec<UserRoleRow>, sqlx::Error> {
+    if let Some(cached) = ROLES_CACHE.get(&profile_id).await {
+        return Ok(cached);
+    }
+
+    let roles = sqlx::query_as::<_, UserRoleRow>(
+        r#"SELECT * FROM "UserRoles" WHERE user_profile_id = $1"#,
+    )
+    .bind(profile_id)
+    .fetch_all(db)
+    .await?;
+
+    ROLES_CACHE.insert(profile_id, roles.clone()).await;
+    Ok(roles)
+}
 
 /// Check if user has the required permission
 pub async fn has_permission(
@@ -7,19 +34,11 @@ pub async fn has_permission(
     is_super_admin: bool,
     permission_check: impl Fn(&UserRoleRow) -> bool,
 ) -> Result<bool, sqlx::Error> {
-    // Super admins bypass all checks
     if is_super_admin {
         return Ok(true);
     }
 
-    // Query user roles and check permission
-    let roles = sqlx::query_as::<_, UserRoleRow>(
-        r#"SELECT * FROM "UserRoles" WHERE user_profile_id = $1"#,
-    )
-    .bind(profile_id)
-    .fetch_all(db)
-    .await?;
-
+    let roles = get_cached_roles(db, profile_id).await?;
     Ok(roles.iter().any(permission_check))
 }
 
@@ -34,12 +53,7 @@ pub async fn has_any_permission(
         return Ok(true);
     }
 
-    let roles = sqlx::query_as::<_, UserRoleRow>(
-        r#"SELECT * FROM "UserRoles" WHERE user_profile_id = $1"#,
-    )
-    .bind(profile_id)
-    .fetch_all(db)
-    .await?;
+    let roles = get_cached_roles(db, profile_id).await?;
 
     for check in checks {
         if roles.iter().any(check) {
@@ -50,7 +64,7 @@ pub async fn has_any_permission(
     Ok(false)
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(sqlx::FromRow, Clone)]
 pub struct UserRoleRow {
     pub id: i32,
     pub role_id: i32,
@@ -89,70 +103,28 @@ pub fn can_view_staff_details(role: &UserRoleRow) -> bool {
 }
 
 /// Check if user has a specific permission by name (string-based for convenience in handlers)
-/// This is a safe alternative to the SQL injection-prone pattern used in individual handlers
+/// Uses cached roles data instead of individual DB queries
 pub async fn has_permission_by_name(
     db: &sqlx::PgPool,
     profile_id: i32,
     is_super_admin: bool,
     permission_name: &str,
 ) -> Result<bool, sqlx::Error> {
-    // Super admins bypass all checks
     if is_super_admin {
         return Ok(true);
     }
 
-    // Use a safe approach with CASE statement instead of string interpolation
-    let has_perm: bool = match permission_name {
-        "can_edit_rota" => {
-            sqlx::query_scalar(
-                r#"SELECT EXISTS(SELECT 1 FROM "UserRoles" WHERE user_profile_id = $1 AND can_edit_rota = true)"#
-            )
-            .bind(profile_id)
-            .fetch_one(db)
-            .await?
-        }
-        "can_access_diary" => {
-            sqlx::query_scalar(
-                r#"SELECT EXISTS(SELECT 1 FROM "UserRoles" WHERE user_profile_id = $1 AND can_access_diary = true)"#
-            )
-            .bind(profile_id)
-            .fetch_one(db)
-            .await?
-        }
-        "can_work_shifts" => {
-            sqlx::query_scalar(
-                r#"SELECT EXISTS(SELECT 1 FROM "UserRoles" WHERE user_profile_id = $1 AND can_work_shifts = true)"#
-            )
-            .bind(profile_id)
-            .fetch_one(db)
-            .await?
-        }
-        "can_edit_templates" => {
-            sqlx::query_scalar(
-                r#"SELECT EXISTS(SELECT 1 FROM "UserRoles" WHERE user_profile_id = $1 AND can_edit_templates = true)"#
-            )
-            .bind(profile_id)
-            .fetch_one(db)
-            .await?
-        }
-        "can_edit_staff" => {
-            sqlx::query_scalar(
-                r#"SELECT EXISTS(SELECT 1 FROM "UserRoles" WHERE user_profile_id = $1 AND can_edit_staff = true)"#
-            )
-            .bind(profile_id)
-            .fetch_one(db)
-            .await?
-        }
-        "can_view_staff_details" => {
-            sqlx::query_scalar(
-                r#"SELECT EXISTS(SELECT 1 FROM "UserRoles" WHERE user_profile_id = $1 AND can_view_staff_details = true)"#
-            )
-            .bind(profile_id)
-            .fetch_one(db)
-            .await?
-        }
-        _ => return Err(sqlx::Error::RowNotFound), // Invalid permission name
+    let roles = get_cached_roles(db, profile_id).await?;
+
+    let check: fn(&UserRoleRow) -> bool = match permission_name {
+        "can_edit_rota" => can_edit_rota,
+        "can_access_diary" => can_access_diary,
+        "can_work_shifts" => can_work_shifts,
+        "can_edit_templates" => can_edit_templates,
+        "can_edit_staff" => can_edit_staff,
+        "can_view_staff_details" => can_view_staff_details,
+        _ => return Err(sqlx::Error::RowNotFound),
     };
 
-    Ok(has_perm)
+    Ok(roles.iter().any(check))
 }

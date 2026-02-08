@@ -2,13 +2,27 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use moka::future::Cache;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::{
     extractors::AuthenticatedUser,
     models::{CreateWorkplaceInput, DependencyCount, UpdateWorkplaceInput, Workplace, WorkplaceMutationResponse},
     AppError, AppResult, AppState,
 };
+
+// Cache all workplaces with 60-second TTL
+static WORKPLACES_CACHE: Lazy<Cache<&'static str, Vec<Workplace>>> = Lazy::new(|| {
+    Cache::builder()
+        .time_to_live(Duration::from_secs(60))
+        .build()
+});
+
+async fn invalidate_workplaces_cache() {
+    WORKPLACES_CACHE.invalidate(&"all").await;
+}
 
 /// GET /api/workplaces
 #[utoipa::path(
@@ -22,11 +36,16 @@ use crate::{
 pub async fn get_workplaces(
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Json<Vec<Workplace>>> {
+    if let Some(cached) = WORKPLACES_CACHE.get(&"all").await {
+        return Ok(Json(cached));
+    }
+
     let workplaces =
-        sqlx::query_as::<_, Workplace>(r#"SELECT * FROM "Workplaces" ORDER BY id"#)
+        sqlx::query_as::<_, Workplace>(r#"SELECT id::int4, hospital, ward, address, code FROM "Workplaces" ORDER BY id"#)
             .fetch_all(&state.db)
             .await?;
 
+    WORKPLACES_CACHE.insert("all", workplaces.clone()).await;
     Ok(Json(workplaces))
 }
 
@@ -59,7 +78,7 @@ pub async fn create_workplace(
         r#"
         INSERT INTO "Workplaces" (hospital, ward, address, code)
         VALUES ($1, $2, $3, $4)
-        RETURNING id, hospital, ward, address, code
+        RETURNING id::int4, hospital, ward, address, code
         "#,
     )
     .bind(&input.hospital)
@@ -69,6 +88,7 @@ pub async fn create_workplace(
     .fetch_one(&state.db)
     .await?;
 
+    invalidate_workplaces_cache().await;
     Ok(Json(workplace))
 }
 
@@ -77,7 +97,7 @@ pub async fn create_workplace(
     put,
     path = "/api/workplaces/{id}",
     params(
-        ("id" = i64, Path, description = "Workplace ID")
+        ("id" = i32, Path, description = "Workplace ID")
     ),
     request_body = UpdateWorkplaceInput,
     responses(
@@ -91,7 +111,7 @@ pub async fn create_workplace(
 )]
 pub async fn update_workplace(
     State(state): State<Arc<AppState>>,
-    Path(workplace_id): Path<i64>,
+    Path(workplace_id): Path<i32>,
     auth: AuthenticatedUser,
     Json(input): Json<UpdateWorkplaceInput>,
 ) -> AppResult<Json<Workplace>> {
@@ -132,7 +152,7 @@ pub async fn update_workplace(
         UPDATE "Workplaces"
         SET {}
         WHERE id = ${}
-        RETURNING id, hospital, ward, address, code
+        RETURNING id::int4, hospital, ward, address, code
         "#,
         updates.join(", "),
         bind_count
@@ -159,7 +179,10 @@ pub async fn update_workplace(
     let workplace = query.fetch_optional(&state.db).await?;
 
     match workplace {
-        Some(wp) => Ok(Json(wp)),
+        Some(wp) => {
+            invalidate_workplaces_cache().await;
+            Ok(Json(wp))
+        }
         None => Err(AppError::NotFound(format!(
             "Workplace {} not found",
             workplace_id
@@ -172,7 +195,7 @@ pub async fn update_workplace(
     delete,
     path = "/api/workplaces/{id}",
     params(
-        ("id" = i64, Path, description = "Workplace ID")
+        ("id" = i32, Path, description = "Workplace ID")
     ),
     responses(
         (status = 200, description = "Workplace deleted successfully", body = WorkplaceMutationResponse),
@@ -184,7 +207,7 @@ pub async fn update_workplace(
 )]
 pub async fn delete_workplace(
     State(state): State<Arc<AppState>>,
-    Path(workplace_id): Path<i64>,
+    Path(workplace_id): Path<i32>,
     auth: AuthenticatedUser,
 ) -> AppResult<Json<WorkplaceMutationResponse>> {
     // Check permission - super admin only
@@ -206,6 +229,7 @@ pub async fn delete_workplace(
         )));
     }
 
+    invalidate_workplaces_cache().await;
     Ok(Json(WorkplaceMutationResponse {
         success: true,
         message: Some("Workplace deleted successfully".to_string()),
@@ -217,7 +241,7 @@ pub async fn delete_workplace(
     get,
     path = "/api/workplaces/{id}/dependencies",
     params(
-        ("id" = i64, Path, description = "Workplace ID")
+        ("id" = i32, Path, description = "Workplace ID")
     ),
     responses(
         (status = 200, description = "Dependency counts", body = DependencyCount),
@@ -228,7 +252,7 @@ pub async fn delete_workplace(
 )]
 pub async fn get_workplace_dependencies(
     State(state): State<Arc<AppState>>,
-    Path(workplace_id): Path<i64>,
+    Path(workplace_id): Path<i32>,
     auth: AuthenticatedUser,
 ) -> AppResult<Json<DependencyCount>> {
     // Check permission - super admin only
@@ -240,7 +264,7 @@ pub async fn get_workplace_dependencies(
 
     // Get all roles for this workplace
     let role_ids: Vec<i32> = sqlx::query_scalar(
-        r#"SELECT id FROM "Roles" WHERE workplace_id = $1"#
+        r#"SELECT id::int4 FROM "Roles" WHERE workplace_id = $1"#
     )
     .bind(workplace_id)
     .fetch_all(&state.db)
@@ -261,76 +285,38 @@ pub async fn get_workplace_dependencies(
         }));
     }
 
-    // Build IN clause for role IDs
-    let role_ids_str = role_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
-
-    // Count dependencies
-    let user_roles_count: i64 = sqlx::query_scalar(
-        &format!(r#"SELECT COUNT(*)::int8 FROM "UserRoles" WHERE role_id IN ({})"#, role_ids_str)
-    )
-    .fetch_one(&state.db)
-    .await?;
-
-    let job_plans_count: i64 = sqlx::query_scalar(
-        &format!(r#"SELECT COUNT(*)::int8 FROM "JobPlans" WHERE user_role IN ({})"#, role_ids_str)
-    )
-    .fetch_one(&state.db)
-    .await?;
-
-    let shifts_count: i64 = sqlx::query_scalar(
-        &format!(r#"SELECT COUNT(*)::int8 FROM "Shifts" WHERE role IN ({})"#, role_ids_str)
-    )
-    .fetch_one(&state.db)
-    .await?;
-
-    let templates_count: i64 = sqlx::query_scalar(
-        &format!(r#"SELECT COUNT(*)::int8 FROM "ShiftTemplates" WHERE role IN ({})"#, role_ids_str)
-    )
-    .fetch_one(&state.db)
-    .await?;
-
-    let diary_count: i64 = sqlx::query_scalar(
-        &format!(r#"SELECT COUNT(*)::int8 FROM "Diary" WHERE role_id IN ({})"#, role_ids_str)
-    )
-    .fetch_one(&state.db)
-    .await?;
-
-    let audit_count: i64 = sqlx::query_scalar(
-        &format!(r#"SELECT COUNT(*)::int8 FROM "ShiftAudit" WHERE role IN ({})"#, role_ids_str)
-    )
-    .fetch_one(&state.db)
-    .await?;
-
-    let cod_count: i64 = sqlx::query_scalar(
-        &format!(r#"SELECT COUNT(*)::int8 FROM "COD" WHERE role_id IN ({})"#, role_ids_str)
-    )
-    .fetch_one(&state.db)
-    .await?;
-
-    // Get shift UUIDs for marketplace requests
-    let shift_uuids: Vec<String> = sqlx::query_scalar(
-        &format!(r#"SELECT uuid::text FROM "Shifts" WHERE role IN ({})"#, role_ids_str)
-    )
-    .fetch_all(&state.db)
-    .await?;
-
-    let shift_requests_count: i64 = if !shift_uuids.is_empty() {
-        let uuids_str = shift_uuids.iter().map(|u| format!("'{}'", u)).collect::<Vec<_>>().join(",");
-        sqlx::query_scalar(
-            &format!(r#"SELECT COUNT(*)::int8 FROM "ShiftRequests" WHERE shift_id::text IN ({})"#, uuids_str)
-        )
-        .fetch_one(&state.db)
-        .await?
-    } else {
-        0
-    };
-
-    // Get unique staff count
-    let unique_staff: i64 = sqlx::query_scalar(
-        &format!(r#"SELECT COUNT(DISTINCT user_profile_id)::int8 FROM "UserRoles" WHERE role_id IN ({})"#, role_ids_str)
-    )
-    .fetch_one(&state.db)
-    .await?;
+    // Run all 9 COUNT queries in parallel for ~9x speedup
+    let db = &state.db;
+    let (
+        user_roles_count,
+        job_plans_count,
+        shifts_count,
+        templates_count,
+        diary_count,
+        audit_count,
+        cod_count,
+        shift_requests_count,
+        unique_staff,
+    ) = tokio::try_join!(
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*)::int8 FROM "UserRoles" WHERE role_id = ANY($1)"#)
+            .bind(&role_ids).fetch_one(db),
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*)::int8 FROM "JobPlans" WHERE role_id = ANY($1)"#)
+            .bind(&role_ids).fetch_one(db),
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*)::int8 FROM "Shifts" WHERE role_id = ANY($1)"#)
+            .bind(&role_ids).fetch_one(db),
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*)::int8 FROM "ShiftTemplates" WHERE role_id = ANY($1)"#)
+            .bind(&role_ids).fetch_one(db),
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*)::int8 FROM "Diary" WHERE role_id = ANY($1)"#)
+            .bind(&role_ids).fetch_one(db),
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*)::int8 FROM "ShiftAudit" WHERE role_id = ANY($1)"#)
+            .bind(&role_ids).fetch_one(db),
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*)::int8 FROM "COD" WHERE role_id = ANY($1)"#)
+            .bind(&role_ids).fetch_one(db),
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*)::int8 FROM "ShiftRequests" WHERE shift_id IN (SELECT uuid FROM "Shifts" WHERE role_id = ANY($1))"#)
+            .bind(&role_ids).fetch_one(db),
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(DISTINCT user_profile_id)::int8 FROM "UserRoles" WHERE role_id = ANY($1)"#)
+            .bind(&role_ids).fetch_one(db),
+    )?;
 
     Ok(Json(DependencyCount {
         roles: role_ids.len() as i32,
@@ -351,7 +337,7 @@ pub async fn get_workplace_dependencies(
     delete,
     path = "/api/workplaces/{id}/nuke",
     params(
-        ("id" = i64, Path, description = "Workplace ID")
+        ("id" = i32, Path, description = "Workplace ID")
     ),
     responses(
         (status = 200, description = "Workplace and all dependencies deleted", body = WorkplaceMutationResponse),
@@ -363,7 +349,7 @@ pub async fn get_workplace_dependencies(
 )]
 pub async fn nuke_workplace(
     State(state): State<Arc<AppState>>,
-    Path(workplace_id): Path<i64>,
+    Path(workplace_id): Path<i32>,
     auth: AuthenticatedUser,
 ) -> AppResult<Json<WorkplaceMutationResponse>> {
     // Check permission - super admin only
@@ -380,7 +366,7 @@ pub async fn nuke_workplace(
 
     // Get all roles for this workplace
     let role_ids: Vec<i32> = sqlx::query_scalar(
-        r#"SELECT id FROM "Roles" WHERE workplace_id = $1"#
+        r#"SELECT id::int4 FROM "Roles" WHERE workplace_id = $1"#
     )
     .bind(workplace_id)
     .fetch_all(&mut *tx)
@@ -398,71 +384,70 @@ pub async fn nuke_workplace(
         }
 
         tx.commit().await?;
-        tracing::info!("NUKE: Workplace deleted (no roles)");
+        invalidate_workplaces_cache().await;
+        tracing::info!("🗑️ NUKE: Workplace deleted (no roles)");
         return Ok(Json(WorkplaceMutationResponse {
             success: true,
             message: Some("Workplace deleted (no dependencies)".to_string()),
         }));
     }
 
-    let role_ids_str = role_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
-    tracing::info!("NUKE: Deleting {} roles and all related data", role_ids.len());
+    tracing::info!("🗑️ NUKE: Deleting {} roles and all related data", role_ids.len());
 
-    // Get shift UUIDs
-    let shift_uuids: Vec<String> = sqlx::query_scalar(
-        &format!(r#"SELECT uuid::text FROM "Shifts" WHERE role IN ({})"#, role_ids_str)
-    )
-    .fetch_all(&mut *tx)
-    .await?;
+    // Delete in order (deepest children → parent), using parameterized queries:
 
-    // Delete in order (deepest children → parent):
-
-    // 1. Shift requests (references shifts)
-    if !shift_uuids.is_empty() {
-        let uuids_str = shift_uuids.iter().map(|u| format!("'{}'", u)).collect::<Vec<_>>().join(",");
-        sqlx::query(&format!(r#"DELETE FROM "ShiftRequests" WHERE shift_id::text IN ({})"#, uuids_str))
-            .execute(&mut *tx)
-            .await?;
-        tracing::info!("NUKE: Deleted shift requests");
-    }
+    // 1. Shift requests (references shifts via subquery)
+    sqlx::query(r#"DELETE FROM "ShiftRequests" WHERE shift_id IN (SELECT uuid FROM "Shifts" WHERE role_id = ANY($1))"#)
+        .bind(&role_ids)
+        .execute(&mut *tx)
+        .await?;
+    tracing::info!("🗑️ NUKE: Deleted shift requests");
 
     // 2. Job plans (references roles)
-    sqlx::query(&format!(r#"DELETE FROM "JobPlans" WHERE user_role IN ({})"#, role_ids_str))
+    sqlx::query(r#"DELETE FROM "JobPlans" WHERE role_id = ANY($1)"#)
+        .bind(&role_ids)
         .execute(&mut *tx)
         .await?;
 
     // 3. Shift audit trail
-    sqlx::query(&format!(r#"DELETE FROM "ShiftAudit" WHERE role IN ({})"#, role_ids_str))
+    sqlx::query(r#"DELETE FROM "ShiftAudit" WHERE role_id = ANY($1)"#)
+        .bind(&role_ids)
         .execute(&mut *tx)
         .await?;
 
     // 4. Diary entries
-    sqlx::query(&format!(r#"DELETE FROM "Diary" WHERE role_id IN ({})"#, role_ids_str))
+    sqlx::query(r#"DELETE FROM "Diary" WHERE role_id = ANY($1)"#)
+        .bind(&role_ids)
         .execute(&mut *tx)
         .await?;
 
     // 5. Shifts
-    sqlx::query(&format!(r#"DELETE FROM "Shifts" WHERE role IN ({})"#, role_ids_str))
+    sqlx::query(r#"DELETE FROM "Shifts" WHERE role_id = ANY($1)"#)
+        .bind(&role_ids)
         .execute(&mut *tx)
         .await?;
 
     // 6. Shift templates
-    sqlx::query(&format!(r#"DELETE FROM "ShiftTemplates" WHERE role IN ({})"#, role_ids_str))
+    sqlx::query(r#"DELETE FROM "ShiftTemplates" WHERE role_id = ANY($1)"#)
+        .bind(&role_ids)
         .execute(&mut *tx)
         .await?;
 
     // 7. User role assignments
-    sqlx::query(&format!(r#"DELETE FROM "UserRoles" WHERE role_id IN ({})"#, role_ids_str))
+    sqlx::query(r#"DELETE FROM "UserRoles" WHERE role_id = ANY($1)"#)
+        .bind(&role_ids)
         .execute(&mut *tx)
         .await?;
 
     // 8. COD entries
-    sqlx::query(&format!(r#"DELETE FROM "COD" WHERE role_id IN ({})"#, role_ids_str))
+    sqlx::query(r#"DELETE FROM "COD" WHERE role_id = ANY($1)"#)
+        .bind(&role_ids)
         .execute(&mut *tx)
         .await?;
 
     // 9. Roles
-    sqlx::query(&format!(r#"DELETE FROM "Roles" WHERE workplace_id = {}"#, workplace_id))
+    sqlx::query(r#"DELETE FROM "Roles" WHERE workplace_id = $1"#)
+        .bind(workplace_id)
         .execute(&mut *tx)
         .await?;
 
@@ -477,6 +462,7 @@ pub async fn nuke_workplace(
     }
 
     tx.commit().await?;
+    invalidate_workplaces_cache().await;
     tracing::warn!("⚠️ NUKE: Workplace {} annihilated ({} roles deleted)", workplace_id, role_ids.len());
 
     Ok(Json(WorkplaceMutationResponse {

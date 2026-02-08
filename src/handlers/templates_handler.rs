@@ -12,6 +12,11 @@ use crate::{
     AppError, AppResult, AppState,
 };
 
+/// Normalize time string to HH:MM:SS format, avoiding double `:00` if already has seconds
+fn normalize_time(s: &str) -> String {
+    if s.matches(':').count() >= 2 { s.to_string() } else { format!("{}:00", s) }
+}
+
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct GetTemplatesQuery {
     #[serde(rename = "roleId")]
@@ -95,8 +100,8 @@ pub async fn create_template(
     }
 
     // Convert time strings to TIME format for database
-    let start_time = input.start.as_ref().map(|s| format!("{}:00", s));
-    let end_time = input.end.as_ref().map(|s| format!("{}:00", s));
+    let start_time = input.start.as_ref().map(|s| normalize_time(s));
+    let end_time = input.end.as_ref().map(|s| normalize_time(s));
 
     let template = sqlx::query_as::<_, ShiftTemplate>(
         r#"
@@ -246,10 +251,10 @@ pub async fn update_template(
         query = query.bind(label);
     }
     if let Some(start) = &input.start {
-        query = query.bind(format!("{}:00", start));
+        query = query.bind(normalize_time(start));
     }
     if let Some(end) = &input.end {
-        query = query.bind(format!("{}:00", end));
+        query = query.bind(normalize_time(end));
     }
     if let Some(pa) = input.pa_value {
         query = query.bind(pa);

@@ -6,9 +6,8 @@ use sqlx::FromRow;
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct JobPlan {
     pub id: i32,
-    #[serde(rename = "user_role")]
-    #[sqlx(rename = "user_role")]
-    pub user_role: i32,
+    #[sqlx(rename = "role_id")]
+    pub role_id: i32,
     pub user_profile_id: i32,
     pub dcc_pa: Option<f32>,
     pub dcc_hour: Option<f32>,

@@ -6,7 +6,7 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct COD {
     pub id: i64,  // INT8 in database (bigserial)
-    pub role_id: i64,  // INT8 in database
+    pub role_id: i32,  // INT4 - references Roles.id
     pub date: NaiveDate,
     pub created_by: i32,  // INT4 - references Users.user_profile_id
     pub comment: Option<String>,

@@ -34,7 +34,7 @@ struct UserRoleQueryRow {
     r_id: Option<i32>,
     r_workplace: Option<i32>,
     r_role_name: Option<String>,
-    w_id: Option<i64>,
+    w_id: Option<i32>,  // INT4, not INT8
     w_hospital: Option<String>,
     w_ward: Option<String>,
     w_address: Option<String>,
@@ -81,47 +81,50 @@ pub async fn get_user_roles(
         }
     }
 
-    // Check if target user is a super admin
-    let is_target_super_admin: bool = sqlx::query_scalar(
-        r#"SELECT is_super_admin FROM "Users" WHERE user_profile_id = $1"#
-    )
-    .bind(target_user_id)
-    .fetch_optional(&state.db)
-    .await?
-    .unwrap_or(false);
-
-    let query_str = r#"
-        SELECT
-            ur.id::int4,
-            ur.role_id::int4,
-            ur.user_profile_id::int4,
-            ur.can_edit_rota,
-            ur.can_access_diary,
-            ur.can_work_shifts,
-            ur.can_edit_templates,
-            ur.can_edit_staff,
-            ur.can_view_staff_details,
-            ur.created_at,
-            r.id::int4 AS r_id,
-            r.workplace_id::int4 AS r_workplace,
-            r.role_name AS r_role_name,
-            w.id::int8 AS w_id,
-            w.hospital AS w_hospital,
-            w.ward AS w_ward,
-            w.address AS w_address,
-            w.code AS w_code
-        FROM "UserRoles" ur
-        LEFT JOIN "Roles" r ON ur.role_id = r.id
-        LEFT JOIN "Workplaces" w ON r.workplace_id = w.id
-        WHERE ur.user_profile_id = $1
-        ORDER BY ur.id
-    "#;
-
-    // Fetch actual UserRole records
-    let actual_user_roles = sqlx::query_as::<_, UserRoleQueryRow>(query_str)
-        .bind(target_user_id)
-        .fetch_all(&state.db)
-        .await?;
+    // Run super admin check and roles query IN PARALLEL (not sequential!)
+    let (is_target_super_admin, actual_user_roles) = tokio::try_join!(
+        async {
+            sqlx::query_scalar::<_, bool>(
+                r#"SELECT is_super_admin FROM "Users" WHERE user_profile_id = $1"#
+            )
+            .bind(target_user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map(|opt| opt.unwrap_or(false))
+        },
+        async {
+            let query_str = r#"
+                SELECT
+                    ur.id::int4,
+                    ur.role_id::int4,
+                    ur.user_profile_id::int4,
+                    ur.can_edit_rota,
+                    ur.can_access_diary,
+                    ur.can_work_shifts,
+                    ur.can_edit_templates,
+                    ur.can_edit_staff,
+                    ur.can_view_staff_details,
+                    ur.created_at,
+                    r.id::int4 AS r_id,
+                    r.workplace_id::int4 AS r_workplace,
+                    r.role_name AS r_role_name,
+                    w.id::int4 AS w_id,
+                    w.hospital AS w_hospital,
+                    w.ward AS w_ward,
+                    w.address AS w_address,
+                    w.code AS w_code
+                FROM "UserRoles" ur
+                LEFT JOIN "Roles" r ON ur.role_id = r.id
+                LEFT JOIN "Workplaces" w ON r.workplace_id = w.id
+                WHERE ur.user_profile_id = $1
+                ORDER BY ur.id
+            "#;
+            sqlx::query_as::<_, UserRoleQueryRow>(query_str)
+                .bind(target_user_id)
+                .fetch_all(&state.db)
+                .await
+        }
+    )?;
 
     let mut result: Vec<UserRole> = actual_user_roles
         .iter()
@@ -182,7 +185,7 @@ pub async fn get_user_roles(
                 r.id::int4 AS r_id,
                 r.workplace_id::int4 AS r_workplace,
                 r.role_name AS r_role_name,
-                w.id::int8 AS w_id,
+                w.id::int4 AS w_id,
                 w.hospital AS w_hospital,
                 w.ward AS w_ward,
                 w.address AS w_address,
@@ -531,7 +534,7 @@ async fn fetch_user_role_by_id(db: &sqlx::PgPool, user_role_id: i32) -> AppResul
             r.id::int4 AS r_id,
             r.workplace_id::int4 AS r_workplace,
             r.role_name AS r_role_name,
-            w.id::int8 AS w_id,
+            w.id::int4 AS w_id,
             w.hospital AS w_hospital,
             w.ward AS w_ward,
             w.address AS w_address,

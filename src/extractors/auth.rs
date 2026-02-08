@@ -78,8 +78,18 @@ impl FromRequestParts<Arc<AppState>> for AuthenticatedUser {
 
             let clerk_user_id = claims.sub.clone();
 
-            // OPTIMIZATION: Try database lookup FIRST (99% of requests - fast!)
-            // Only fetch email from Clerk API for auto-linking new users (1% of requests)
+            // OPTIMIZATION: Check profile cache first (eliminates DB query for repeat requests)
+            if let Some((profile_id, is_super_admin, email)) = state.profile_cache.get(&clerk_user_id).await {
+                tracing::debug!(clerk_user_id, profile_id, "📋 Profile resolved from cache");
+                return Ok(AuthenticatedUser {
+                    clerk_user_id,
+                    email,
+                    profile_id,
+                    is_super_admin,
+                });
+            }
+
+            // Cache miss - try database lookup (99% of requests)
             let user_opt = sqlx::query_as::<_, crate::models::User>(
                 r#"SELECT * FROM "Users" WHERE auth_id = $1"#,
             )
@@ -95,13 +105,18 @@ impl FromRequestParts<Arc<AppState>> for AuthenticatedUser {
             })?;
 
             if let Some(user) = user_opt {
-                // ✓ User found by auth_id - use email from database (FAST!)
                 let email = user.primary_email.clone().unwrap_or_else(|| {
                     tracing::warn!(clerk_user_id, profile_id = user.user_profile_id, "User has no primary_email");
                     String::from("")
                 });
 
-                tracing::debug!(clerk_user_id, profile_id = user.user_profile_id, "User found by auth_id");
+                // Cache the profile for future requests
+                state.profile_cache.insert(
+                    clerk_user_id.clone(),
+                    (user.user_profile_id, user.is_super_admin, email.clone()),
+                ).await;
+
+                tracing::debug!(clerk_user_id, profile_id = user.user_profile_id, "✅ User found by auth_id (cached)");
                 return Ok(AuthenticatedUser {
                     clerk_user_id,
                     email,
@@ -156,10 +171,16 @@ impl FromRequestParts<Arc<AppState>> for AuthenticatedUser {
                 clerk_user_id,
                 profile_id = user.user_profile_id,
                 email,
-                "User auto-linked by email"
+                "🔗 User auto-linked by email"
             );
 
             let user_email = user.primary_email.clone().unwrap_or_else(|| email.clone());
+
+            // Cache the newly linked profile
+            state.profile_cache.insert(
+                clerk_user_id.clone(),
+                (user.user_profile_id, user.is_super_admin, user_email.clone()),
+            ).await;
 
             Ok(AuthenticatedUser {
                 clerk_user_id,

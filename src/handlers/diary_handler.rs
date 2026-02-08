@@ -21,6 +21,12 @@ pub struct GetDiaryQuery {
     pub end: Option<String>,
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct DeleteDiaryQuery {
+    #[serde(rename = "confirmedUserId")]
+    pub confirmed_user_id: Option<i32>,
+}
+
 /// GET /api/diary?roleId=&start=&end=
 #[utoipa::path(
     get,
@@ -34,8 +40,16 @@ pub struct GetDiaryQuery {
 )]
 pub async fn get_diary(
     State(state): State<Arc<AppState>>,
+    auth: AuthenticatedUser,
     Query(query): Query<GetDiaryQuery>,
 ) -> AppResult<Json<Vec<DiaryEntry>>> {
+    // Check permission
+    if !crate::extractors::permissions::has_permission_by_name(
+        &state.db, auth.profile_id, auth.is_super_admin, "can_access_diary"
+    ).await? {
+        return Err(AppError::Forbidden("Missing can_access_diary permission".to_string()));
+    }
+
     // Handle different query combinations
     let entries = match (query.role_id, query.start, query.end) {
         (Some(role_id), Some(start), Some(end)) => {
@@ -106,15 +120,18 @@ pub async fn create_diary_entry(
     auth: AuthenticatedUser,
     Json(mut input): Json<CreateDiaryInput>,
 ) -> AppResult<Json<DiaryEntry>> {
+    // Use confirmed user ID if provided (generic account flow), otherwise use authenticated user
+    let acting_user_id = input.confirmed_user_id.unwrap_or(auth.profile_id);
+
     // Check permission
-    if !crate::extractors::permissions::has_permission_by_name(&state.db, auth.profile_id, auth.is_super_admin, "can_access_diary").await? {
+    if !crate::extractors::permissions::has_permission_by_name(&state.db, acting_user_id, auth.is_super_admin, "can_access_diary").await? {
         return Err(AppError::Forbidden(
             "Missing can_access_diary permission".to_string(),
         ));
     }
 
-    // Set created_by to authenticated user
-    input.created_by = Some(auth.profile_id);
+    // Set created_by to acting user
+    input.created_by = Some(acting_user_id);
 
     let entry = sqlx::query_as::<_, DiaryEntry>(
         r#"
@@ -122,7 +139,7 @@ pub async fn create_diary_entry(
             role_id, date, entry, al, sl, pl, user_profile_id, created_by, deleted
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
-        RETURNING *
+        RETURNING id::int4, role_id, date, entry, al, sl, pl, created_at, user_profile_id, created_by, deleted
         "#,
     )
     .bind(input.role_id)
@@ -132,19 +149,24 @@ pub async fn create_diary_entry(
     .bind(input.sl)
     .bind(input.pl)
     .bind(input.user_profile_id)
-    .bind(input.created_by.unwrap())
+    .bind(input.created_by.unwrap_or(acting_user_id))
     .fetch_one(&state.db)
     .await?;
 
     Ok(Json(entry))
 }
 
-/// DELETE /api/diary/{id} - Delete a diary entry (soft delete)
+/// DELETE /api/diary/{id} - Delete a diary entry (hard or soft based on creation time)
+/// Logic:
+/// - Announcements (no user_profile_id): Always hard delete
+/// - Created < 60 minutes ago: Hard delete
+/// - Created ≥ 60 minutes ago: Soft delete (set deleted=true)
 #[utoipa::path(
     delete,
     path = "/api/diary/{id}",
     params(
-        ("id" = i32, Path, description = "Diary entry ID")
+        ("id" = i32, Path, description = "Diary entry ID"),
+        ("confirmedUserId" = Option<i32>, Query, description = "For generic accounts - PIN-verified user ID")
     ),
     responses(
         (status = 200, description = "Diary entry deleted successfully", body = DiaryMutationResponse),
@@ -157,26 +179,64 @@ pub async fn create_diary_entry(
 pub async fn delete_diary_entry(
     State(state): State<Arc<AppState>>,
     Path(entry_id): Path<i32>,
+    Query(params): Query<DeleteDiaryQuery>,
     auth: AuthenticatedUser,
 ) -> AppResult<Json<DiaryMutationResponse>> {
+    // Use confirmed user ID if provided (generic account flow), otherwise use authenticated user
+    let acting_user_id = params.confirmed_user_id.unwrap_or(auth.profile_id);
+
     // Check permission
-    if !crate::extractors::permissions::has_permission_by_name(&state.db, auth.profile_id, auth.is_super_admin, "can_access_diary").await? {
+    if !crate::extractors::permissions::has_permission_by_name(&state.db, acting_user_id, auth.is_super_admin, "can_access_diary").await? {
         return Err(AppError::Forbidden(
             "Missing can_access_diary permission".to_string(),
         ));
     }
 
-    // Soft delete by setting deleted = true
-    let result = sqlx::query(r#"UPDATE "Diary" SET deleted = true WHERE id = $1"#)
-        .bind(entry_id)
-        .execute(&state.db)
-        .await?;
+    // Fetch entry to check creation time and user_profile_id
+    #[derive(sqlx::FromRow)]
+    struct DiaryCheck {
+        user_profile_id: Option<i32>,
+        created_at: chrono::NaiveDateTime,
+    }
 
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound(format!(
-            "Diary entry {} not found",
-            entry_id
-        )));
+    let entry = sqlx::query_as::<_, DiaryCheck>(
+        r#"SELECT user_profile_id, created_at FROM "Diary" WHERE id = $1"#
+    )
+    .bind(entry_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let entry = entry.ok_or_else(|| AppError::NotFound(format!(
+        "Diary entry {} not found",
+        entry_id
+    )))?;
+
+    // Decide: hard delete or soft delete
+    let should_hard_delete = if entry.user_profile_id.is_none() {
+        // Announcements (no user profile) are always hard deleted
+        true
+    } else {
+        // Check if created within last 60 minutes
+        use chrono::Utc;
+        let now = Utc::now().naive_utc();
+        let created = entry.created_at;
+        let duration = now.signed_duration_since(created);
+        let diff_minutes = duration.num_minutes();
+        diff_minutes < 60
+    };
+
+    if should_hard_delete {
+        // Hard delete
+        sqlx::query(r#"DELETE FROM "Diary" WHERE id = $1"#)
+            .bind(entry_id)
+            .execute(&state.db)
+            .await?;
+    } else {
+        // Soft delete
+        sqlx::query(r#"UPDATE "Diary" SET deleted = true WHERE id = $1"#)
+            .bind(entry_id)
+            .execute(&state.db)
+            .await?;
     }
 
     Ok(Json(DiaryMutationResponse {

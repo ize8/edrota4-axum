@@ -8,7 +8,7 @@ use uuid::Uuid;
 pub struct Shift {
     pub uuid: Uuid,
     #[serde(rename = "role")]
-    #[sqlx(rename = "role")]
+    #[sqlx(rename = "role")]  // SQL aliases role_id AS role
     pub role: i32,
     pub label: String,
     pub start: Option<String>,  // HH:MM format
@@ -25,7 +25,7 @@ pub struct Shift {
     pub is_dcc: bool,
     pub is_spa: bool,
     #[serde(rename = "time_off")]
-    #[sqlx(rename = "time_off")]
+    #[sqlx(rename = "time_off")]  // SQL aliases time_off_category_id AS time_off
     pub time_off: Option<i32>,
     pub user_profile_id: Option<i32>,
     pub created_by: i32,

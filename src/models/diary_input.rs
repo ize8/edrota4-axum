@@ -14,6 +14,8 @@ pub struct CreateDiaryInput {
     pub pl: bool,
     pub user_profile_id: Option<i32>,
     pub created_by: Option<i32>, // Will be set to authenticated user
+    #[serde(rename = "confirmedUserId")]
+    pub confirmed_user_id: Option<i32>, // For generic accounts - PIN-verified user ID
 }
 
 /// Response for diary mutations
